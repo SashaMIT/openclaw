@@ -1,12 +1,145 @@
+import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
+import { makeUserMessage } from "../../../test/helpers/user-message.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import * as contextWorker from "../../config/sessions/session-transcript-read-worker-runtime.js";
 import { waitForSessionTranscriptProjection } from "../../config/sessions/session-transcript-reconcile.js";
+import { readGlobalSingleton } from "../../shared/global-singleton.js";
+import {
+  closeOpenClawAgentDatabaseByPathAsync,
+  openOpenClawAgentDatabase,
+} from "../../state/openclaw-agent-db.js";
+import { resolveIncognitoOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { makeAgentAssistantMessage } from "../test-helpers/agent-message-fixtures.js";
 import { sessionManagerReadInitialContext } from "./session-manager-current-turn.js";
 import { SessionManager } from "./session-manager.js";
+
+it.each(["key", "path"] as const)(
+  "rejects a replaced native owner selected by %s",
+  async (route) => {
+    await withOpenClawTestState({ label: "native-context-owner" }, async (state) => {
+      const pathname = resolveIncognitoOpenClawAgentSqlitePath({ agentId: "main", env: state.env });
+      const options = { agentId: "main", path: pathname, env: state.env };
+      const original = openOpenClawAgentDatabase(options);
+      const target = {
+        agentId: "main",
+        sessionId: "empty-native-context",
+        sessionKey:
+          route === "key"
+            ? "agent:main:dashboard:incognito-context-owner"
+            : "agent:main:context-owner",
+        storePath:
+          route === "key" ? path.join(state.agentDir("main"), "openclaw-agent.sqlite") : pathname,
+        env: state.env,
+      };
+      await expect(
+        SessionManager.readSessionContextAsync(target, async (messages) => {
+          expect([...messages]).toEqual([]);
+          await closeOpenClawAgentDatabaseByPathAsync(pathname, "main");
+          expect(openOpenClawAgentDatabase(options)).not.toBe(original);
+          return "stale owner result";
+        }),
+      ).rejects.toThrow("incognito database owner is no longer current");
+      expect(
+        await SessionManager.readSessionContextAsync(target, (messages) => [...messages]),
+      ).toEqual([]);
+      expect(fs.existsSync(pathname)).toBe(false);
+    });
+  },
+);
+
+it("reads full durable context through workers and preserves the deprecated synchronous result", async () => {
+  await withOpenClawTestState({ label: "context-read-async" }, async (state) => {
+    const target = {
+      agentId: "main",
+      sessionId: "full-context",
+      sessionKey: "agent:main:full-context",
+      storePath: path.join(state.agentDir("main"), "openclaw-agent.sqlite"),
+    };
+    await upsertSessionEntryCore(target, { sessionId: target.sessionId, updatedAt: 1 });
+    const manager = await SessionManager.openAsync(target);
+    const seeded = await manager.appendMessageWithTranscriptAnchorAsync(
+      Object.assign(makeUserMessage("full fidelity", 1), {
+        __openclaw: { upstreamUserText: "synthetic-private-native-text" },
+      }),
+    );
+    if (!seeded.anchor) {
+      throw new Error("Missing initial transcript anchor");
+    }
+    const warned = readGlobalSingleton(Symbol.for("openclaw.sessionPersistenceDeprecations"));
+    if (!(warned instanceof Set)) {
+      throw new Error("Missing session persistence warning budget");
+    }
+    const warningKey = "SessionManager.readSessionContext";
+    const previouslyWarned = warned.delete(warningKey);
+    const warn = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
+    let expected: unknown;
+    try {
+      expected = SessionManager.readSessionContext(target, (messages) => [...messages]);
+      expect(SessionManager.readSessionContext(target, () => 7)).toBe(7);
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining("readSessionContextAsync"),
+        { code: "DEP_SESSION_PERSISTENCE", type: "DeprecationWarning" },
+      );
+    } finally {
+      warn.mockRestore();
+      if (previouslyWarned) {
+        warned.add(warningKey);
+      } else {
+        warned.delete(warningKey);
+      }
+    }
+    const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+    const exec = vi.spyOn(DatabaseSync.prototype, "exec");
+    try {
+      expect(
+        await SessionManager.readSessionContextAsync(target, async (messages, header) => {
+          expect(header).toMatchObject({ id: target.sessionId });
+          await Promise.resolve();
+          return [...messages];
+        }),
+      ).toEqual(expected);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(exec).not.toHaveBeenCalled();
+    } finally {
+      prepare.mockRestore();
+      exec.mockRestore();
+    }
+    await expect(
+      SessionManager.readSessionContextAsync(target, async () => {
+        await manager.appendMessageAsync(makeUserMessage("changed", 2));
+      }),
+    ).rejects.toThrow("changed during context read");
+    const missing = { ...target, storePath: path.join(state.agentDir("main"), "absent.sqlite") };
+    await expect(
+      SessionManager.readSessionContextAsync(missing, () => "unreadable", {
+        admission: {
+          ...seeded.anchor,
+          storePath: missing.storePath,
+          role: "user",
+          logicalTurnId: "missing-source",
+        },
+      }),
+    ).rejects.toThrow("no longer readable");
+    expect(fs.existsSync(missing.storePath)).toBe(false);
+    const alias = path.join(state.stateDir, "context-alias");
+    const successor = path.join(state.stateDir, "missing-successor");
+    fs.mkdirSync(successor);
+    fs.symlinkSync(path.dirname(target.storePath), alias, "junction");
+    await expect(
+      SessionManager.readSessionContextAsync(
+        { ...target, storePath: path.join(alias, path.basename(target.storePath)) },
+        async () => {
+          fs.unlinkSync(alias);
+          fs.symlinkSync(successor, alias, "junction");
+        },
+      ),
+    ).rejects.toThrow(/captured|identity|owner/);
+  });
+});
 
 it.each([false, true])("shares immutable initial messages (incognito=%s)", async (incognito) => {
   await withOpenClawTestState({ label: "shared-model-context" }, async (state) => {
