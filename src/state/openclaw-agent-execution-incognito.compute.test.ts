@@ -308,6 +308,21 @@ it("refuses new compute work through a released borrow", async () => {
   expect(operation).not.toHaveBeenCalled();
 });
 
+it("captures the selected compute target before accepting deferred work", async () => {
+  const selected = await create("captured-target");
+  const replacement = await create("replacement-target");
+  await append(selected, "selected transcript");
+  const target = { ...selected };
+  const read = actor.sessions.withCompute(authority, target, (compute) =>
+    compute.execute({
+      type: "session.compute.usage.stats",
+      input: { ...selected, request: {} },
+    }),
+  );
+  Object.assign(target, replacement);
+  await expect(read).resolves.toMatchObject({ eventCount: 2 });
+});
+
 describe("cross-actor compute", () => {
   let otherActor: IncognitoAgentDatabaseExecution;
   let otherWorker: Worker;

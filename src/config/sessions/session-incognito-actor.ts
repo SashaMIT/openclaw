@@ -392,9 +392,10 @@ export function createIncognitoSessionFacts(
         ): Promise<T> => {
           assertOutsideGrant();
           assertBorrowed();
+          const capturedTarget = structuredClone(target);
           return retain(() =>
             withIncognitoCompute<T, IncognitoSessionClaim>({
-              target,
+              target: capturedTarget,
               assertAuthority: () => authority.assertCurrent(),
               assertBorrowed,
               captureClaim: (sessionKey, facts) => claim(sessionKey, assertBorrowed, facts),
