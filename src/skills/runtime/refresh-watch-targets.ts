@@ -5,7 +5,7 @@ import { resolvePathViaExistingAncestorSync } from "../../infra/boundary-path.js
 import { isPathInside } from "../../infra/path-guards.js";
 import type { PluginMetadataSnapshot } from "../../plugins/plugin-metadata-snapshot.types.js";
 import { tryRealpath } from "../loading/symlink-targets.js";
-import type { WorkspaceSkillSourcePlan } from "../loading/workspace-skill-sources.js";
+import type { WorkspaceSkillSourcePlan } from "../loading/workspace-skill-sources.types.js";
 import { areOrderedArraysEqual } from "./ordered-array-equality.js";
 import { resolveSkillsWatchSourceRoots } from "./refresh-source-roots.js";
 import {
