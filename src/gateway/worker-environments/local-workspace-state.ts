@@ -382,10 +382,11 @@ export function projectionOperations(
       } finally {
         await fs.rm(temporary, { recursive: true, force: true });
       }
-    } else {
-      await timeWorktreePreparationPhase("synchronizeCanonical", () => synchronize("canonical"));
     }
     await assertOwnedDirectory(current().projection_path);
+    if (selected.baseline_ref) {
+      await timeWorktreePreparationPhase("synchronizeCanonical", () => synchronize("canonical"));
+    }
     await timeWorktreePreparationPhase("synchronizeProjection", () => synchronize("projection"));
     return current().projection_path;
   };

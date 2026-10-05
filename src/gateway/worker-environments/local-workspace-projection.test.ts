@@ -471,6 +471,19 @@ describe("local sandbox workspace reconciliation", () => {
         expect(localWorkspaceStore().get(owner.worktree.id)?.pending_ref).toBeTruthy();
       }
       revoked = false;
+      if (accepted) {
+        const pendingRef = localWorkspaceStore().get(owner.worktree.id)?.pending_ref;
+        const preservedProjection = projection + "-preserved";
+        await fs.rename(projection, preservedProjection);
+        try {
+          await expect(
+            withLocalWorkspaceProjection(owner, (state) => state.prepare()),
+          ).rejects.toThrow();
+          expect(localWorkspaceStore().get(owner.worktree.id)?.pending_ref).toBe(pendingRef);
+        } finally {
+          await fs.rename(preservedProjection, projection);
+        }
+      }
       closeOpenClawStateDatabase();
       await withLocalWorkspaceProjection(owner, (state) => state.settle());
       expect(await readText(owner.worktree.path, "source.txt")).toBe(
