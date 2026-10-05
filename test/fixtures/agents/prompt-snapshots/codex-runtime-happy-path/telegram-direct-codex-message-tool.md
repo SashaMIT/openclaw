@@ -260,20 +260,20 @@ This is the deterministic model-bound layer stack OpenClaw can snapshot for the 
     "roughTokens": 18129
   },
   "openClawDeveloperInstructions": {
-    "chars": 3009,
-    "roughTokens": 753
+    "chars": 3026,
+    "roughTokens": 757
   },
   "openClawParentLocalInstructions": {
     "chars": 507,
     "roughTokens": 127
   },
   "totalTextOnly": {
-    "chars": 27395,
-    "roughTokens": 6849
+    "chars": 27412,
+    "roughTokens": 6853
   },
   "totalWithDynamicToolsJson": {
-    "chars": 99910,
-    "roughTokens": 24978
+    "chars": 99927,
+    "roughTokens": 24982
   },
   "userInputText": {
     "chars": 879,
@@ -484,7 +484,7 @@ You are a personal agent running inside OpenClaw. OpenClaw has dynamic tools for
 
 Deferred searchable OpenClaw dynamic tools available: automations, gateway, nodes, session_status, sessions_history, sessions_list, sessions_search, sessions_send, subagents, tts, web_fetch, web_search.
 
-Deferred tools may be absent from the direct tool list. Call a tool that is in the direct tool list directly. Use `tool_search` to find a tool that is not listed. Do not use `exec` to look tools up, and do not call a tool again after it has returned.
+Deferred tools may be absent from the direct tool list. Call a tool that is in the direct tool list directly. Use `tool_search` to find a tool that is not listed. Do not use `exec` to look tools up, and do not re-run a completed call to get a result you already have.
 
 Use Codex native `spawn_agent` for Codex subagents. `spawn_agent` and the other native collaboration tools may be deferred. For follow-up work on an existing native child, use the native collaboration tool that starts or queues a new turn. Use OpenClaw `sessions_spawn` only for OpenClaw or ACP delegation, never as a substitute for `spawn_agent` on internal legwork.
 
