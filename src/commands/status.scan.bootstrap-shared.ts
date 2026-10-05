@@ -78,8 +78,11 @@ export async function createStatusScanCoreBootstrap<TAgentStatus>(
     tailscaleMode === "off"
       ? Promise.resolve<string | null>(null)
       : params
-          .getTailnetHostname((cmd, args) =>
-            runExec(cmd, args, { timeoutMs: tailscaleTimeoutMs, maxBuffer: 200_000 }),
+          .getTailnetHostname((cmd, args, options) =>
+            runExec(cmd, args, {
+              ...(typeof options === "object" ? options : {}),
+              timeoutMs: tailscaleTimeoutMs,
+            }),
           )
           .catch(() => null);
   // Update checks can hit git/registry, so cold-start status uses a synthetic unknown result.

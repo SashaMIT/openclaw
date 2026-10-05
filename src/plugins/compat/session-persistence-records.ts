@@ -85,6 +85,29 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
       "Plugins can await full-fidelity SessionManager context reads and asynchronous consumers. Source validation follows consumption; the synchronous reader remains available until the next Plugin SDK major. Storage and update behavior are unchanged.",
   },
   {
+    code: "session-reset-freshness-sync-read",
+    status: "deprecated",
+    owner: "sdk",
+    introduced: "2026-10-05",
+    deprecated: "2026-10-05",
+    warningStarts: "2026-10-05",
+    removalGate: "next-plugin-sdk-major",
+    replacement:
+      "Await runtime.channel.session.resolveEntryResetFreshnessAsync. The released synchronous resolveEntryResetFreshness method retains its parameters and result until the next Plugin SDK major and explicit breaking-release approval.",
+    docsPath: "/plugins/sdk-migration#session-reset-freshness",
+    surfaces: ["api.runtime.channel.session.resolveEntryResetFreshness"],
+    diagnostics: [
+      "TypeScript @deprecated annotation and migration documentation; no runtime warnings",
+    ],
+    tests: [
+      "src/plugin-sdk/session-reset-freshness-compat.test.ts",
+      "src/config/sessions/entry-freshness.test.ts",
+      "src/plugins/compat/registry.test.ts",
+    ],
+    releaseNote:
+      "Channel plugins can await session reset freshness through the transcript worker. Existing plugins retain the synchronous method and reset policy; stored data and update behavior are unchanged.",
+  },
+  {
     code: "agent-end-sync-side-effects",
     status: "deprecated",
     owner: "agent-runtime",
@@ -260,5 +283,28 @@ export const SESSION_PERSISTENCE_COMPAT_RECORDS = [
     ],
     releaseNote:
       "Released ACP readers and manager injection callbacks keep their one-argument contracts while incognito actor composition remains internal and inactive.",
+  },
+  {
+    code: "memory-session-released-signatures",
+    status: "active",
+    owner: "sdk",
+    introduced: "2026-10-05",
+    removalGate: "next-plugin-sdk-major",
+    replacement:
+      "Keep the released Memory entry, corpus, and reset-recall reader signatures. Internal actor sources are not plugin arguments; actor activation must preserve the existing Promise results and synchronous message observers. These APIs remain supported and are not deprecated.",
+    docsPath: "/plugins/sdk-migration/compatibility-policy#memory-session-binding-compatibility",
+    surfaces: [
+      "openclaw/plugin-sdk/memory-core-host-engine-sessions.buildSessionEntry",
+      "openclaw/plugin-sdk/memory-core-host-engine-sessions.listSessionTranscriptCorpusEntriesForAgent",
+      "openclaw/plugin-sdk/memory-core-host-engine-sessions.readSessionResetRecallCutoff",
+    ],
+    diagnostics: ["SDK type assertions and compatibility documentation; no runtime warnings"],
+    tests: [
+      "src/plugin-sdk/memory-core-host-engine-sessions.contract.test.ts",
+      "src/state/openclaw-agent-execution-incognito.memory.test.ts",
+      "src/plugins/compat/registry.test.ts",
+    ],
+    releaseNote:
+      "Released Memory readers retain their argument and return contracts while incognito actor sources remain internal and inactive. Storage and update behavior are unchanged.",
   },
 ] as const satisfies readonly PluginCompatRecord[];
