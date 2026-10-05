@@ -1,17 +1,9 @@
 import { asOptionalObjectRecord as asRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/string-coerce";
-import {
-  groupToolCalls,
-  type ToolCallGroup,
-  type ToolCallIdentity,
-} from "../chat/tool-call-grouping.js";
+import { groupToolCalls, type ToolCallIdentity } from "../chat/tool-call-grouping.js";
 import { isAgentPlanProgressToolName } from "../session-cards/progress-card-input.js";
 
-/**
- * Only recorded, unambiguous children replace a successfully completed wrapper,
- * and only when one of them stays visible in progress to stand for it. A wrapper
- * whose recorded calls are all routine stays the operation instead of leaving none.
- */
+/** Only recorded, visible children replace a successfully completed wrapper. */
 export function resolveCompletedActivityWrappers<
   Call extends ToolCallIdentity & {
     activity?: {
@@ -22,27 +14,22 @@ export function resolveCompletedActivityWrappers<
   },
 >(calls: readonly Call[]): Set<Call> {
   const wrappers = new Set<Call>();
-  const parentsFirst: ToolCallGroup<Call>[] = [];
   const pending = groupToolCalls(calls);
   while (pending.length > 0) {
     const group = pending.pop()!;
-    parentsFirst.push(group);
-    for (const child of group.children) {
-      pending.push(child);
-    }
-  }
-  // Children settle before their parent, so a nested wrapper kept for its own
-  // routine calls can still replace the wrapper above it.
-  const shown = new Set<ToolCallGroup<Call>>();
-  for (const group of parentsFirst.toReversed()) {
-    const { activity } = group.card;
-    const childShown = group.children.some((child) => shown.has(child));
-    if (childShown && activity?.status === "completed") {
+    if (
+      group.card.activity?.status === "completed" &&
+      group.children.some(
+        ({ card }) =>
+          card.activity &&
+          !card.activity.hideFromChannelProgress &&
+          !card.activity.suppressChannelProgress,
+      )
+    ) {
       wrappers.add(group.card);
     }
-    // A call still running at settlement has no terminal facts; it counts as shown.
-    if (childShown || !(activity?.hideFromChannelProgress || activity?.suppressChannelProgress)) {
-      shown.add(group);
+    for (const child of group.children) {
+      pending.push(child);
     }
   }
   return wrappers;
