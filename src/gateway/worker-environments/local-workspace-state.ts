@@ -6,6 +6,7 @@ import type { SandboxConfig } from "../../agents/sandbox/types.js";
 import type { WorktreeAllocationGuard } from "../../agents/worktrees/allocation.js";
 import { splitNullBuffer } from "../../agents/worktrees/git-path-inventory.js";
 import { requireGit, requireGitBuffer } from "../../agents/worktrees/git.js";
+import { timeWorktreePreparationPhase } from "../../agents/worktrees/preparation-timing.js";
 import type { WorktreeWorkerAuthority } from "../../agents/worktrees/types.js";
 import { resolveStateDir } from "../../config/state-dir.js";
 import { prepareLocalWorkspaceCheckout } from "./local-workspace-checkout.js";
@@ -364,23 +365,28 @@ export function projectionOperations(
             },
           }));
         if (!cloned) {
-          await prepareLocalWorkspaceCheckout(checkout);
+          await timeWorktreePreparationPhase("checkout", () =>
+            prepareLocalWorkspaceCheckout(checkout),
+          );
         }
-        const initial = await captureWorkspaceSnapshot({
-          root: repo,
-          baseCommit: selected.base_commit,
-          signal,
-        });
+        const initial = await timeWorktreePreparationPhase("snapshot", () =>
+          captureWorkspaceSnapshot({
+            root: repo,
+            baseCommit: selected.base_commit,
+            signal,
+          }),
+        );
         current();
         await fs.rename(repo, selected.projection_path);
         update({ baseline_json: initial.rawManifest, baseline_ref: initial.manifestRef });
       } finally {
         await fs.rm(temporary, { recursive: true, force: true });
       }
+    } else {
+      await timeWorktreePreparationPhase("synchronizeCanonical", () => synchronize("canonical"));
     }
     await assertOwnedDirectory(current().projection_path);
-    await synchronize("canonical");
-    await synchronize("projection");
+    await timeWorktreePreparationPhase("synchronizeProjection", () => synchronize("projection"));
     return current().projection_path;
   };
   return {
