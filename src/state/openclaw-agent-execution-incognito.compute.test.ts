@@ -4,12 +4,16 @@ import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { awaitGateBeforeSettlement } from "../../test/helpers/promise.js";
+import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { formatSqliteSessionFileMarker } from "../config/sessions/legacy-sqlite-marker.js";
-import type { IncognitoComputeTarget } from "../config/sessions/session-incognito-compute-contract.js";
+import type {
+  IncognitoComputeOperations,
+  IncognitoComputeTarget,
+} from "../config/sessions/session-incognito-compute-contract.js";
 import type { IncognitoSessionAuthority } from "../config/sessions/session-incognito-contract.js";
+import * as reconcilePool from "../config/sessions/session-transcript-reconcile-pool.js";
 import {
   reconcileSessionTranscriptIndexes,
   startSessionTranscriptIndexReconcile,
@@ -32,7 +36,6 @@ import {
 } from "../infra/session-cost-usage-worker-runtime.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { withEnvAsync } from "../test-utils/env.js";
-import { resolveIncognitoOpenClawAgentSqlitePath } from "./openclaw-agent-db.paths.js";
 import type { IncognitoAgentDatabaseExecution } from "./openclaw-agent-execution-incognito.js";
 import { captureOpenClawAgentDatabaseExecution } from "./openclaw-agent-execution.js";
 import { closeOpenClawStateDatabaseAsync } from "./openclaw-state-db.js";
@@ -70,8 +73,7 @@ afterAll(async () => {
 });
 
 function location(owner = actor) {
-  const agentId = owner.agentId;
-  return { agentId, path: resolveIncognitoOpenClawAgentSqlitePath({ agentId, env }) };
+  return { agentId: owner.agentId, path: owner.path };
 }
 
 async function create(sessionId: string, owner = actor): Promise<IncognitoComputeTarget> {
@@ -164,6 +166,27 @@ function stats(target: IncognitoComputeTarget, owner = actor) {
       input: { ...target, request: {} },
     }),
   );
+}
+function observeCompute(observe: (type: keyof IncognitoComputeOperations) => void | Promise<void>) {
+  const withCompute = actor.sessions.withCompute;
+  return vi
+    .spyOn(actor.sessions, "withCompute")
+    .mockImplementation((caller, selected, operation, signal) =>
+      withCompute(
+        caller,
+        selected,
+        (compute) =>
+          operation({
+            assertCurrent: compute.assertCurrent,
+            async execute(command) {
+              const result = await compute.execute(command);
+              await observe(command.type);
+              return result;
+            },
+          }),
+        signal,
+      ),
+    );
 }
 async function hold(owner = actor) {
   const entered = createDeferredCore();
@@ -297,6 +320,103 @@ describe("cross-actor compute", () => {
   });
   afterAll(async () => {
     await otherActor?.close();
+  });
+
+  it("reconciles actor transcripts rewritten while yielding to a smaller backlog", async ({
+    signal,
+  }) => {
+    const first = await create("yield-large-first");
+    const targets = [first];
+    for (const name of ["second", "third", "fourth"]) {
+      targets.push(await create(`yield-large-${name}`));
+    }
+    for (const target of targets) {
+      await append(target, "old branch");
+      await append(target, "current branch", actor, null);
+    }
+    const small = await create("yield-small", otherActor);
+    await append(small, "small branch", otherActor);
+    const paused = createDeferredCore();
+    const release = createDeferredCore();
+    const queued = createDeferredCore();
+    const completed: string[] = [];
+    let held = false;
+    const wrapped = observeCompute(async (type) => {
+      if (type === "session.compute.projection.finalize" && !held) {
+        held = true;
+        // Native finalization has committed; the planner has not received its ACK.
+        paused.resolve();
+        await release.promise;
+      }
+    });
+    const runOperation = reconcilePool.runSessionTranscriptReconcileOperation;
+    const scheduled = vi
+      .spyOn(reconcilePool, "runSessionTranscriptReconcileOperation")
+      .mockImplementation((generation, run, owner) =>
+        runOperation(
+          generation,
+          (operation) =>
+            run({
+              ...operation,
+              startTask: (...args) => {
+                const pending = operation.startTask(...args);
+                if (args[0].mode === "memory" && args[0].sessionIds.includes(small.sessionId)) {
+                  queued.resolve();
+                }
+                return pending;
+              },
+            }),
+          owner,
+        ),
+      );
+    const large = reconcileSessionTranscriptIndexes(
+      { ...location(), env, preferredSessionId: first.sessionId },
+      { actor, authority },
+    ).then((result) => {
+      completed.push("large");
+      return result;
+    });
+    let smaller: ReturnType<typeof reconcileSessionTranscriptIndexes> | undefined;
+    try {
+      await withinTest(
+        awaitGateBeforeSettlement(paused.promise, large, "large rebuild ended before its pause"),
+        signal,
+      );
+      smaller = reconcileSessionTranscriptIndexes(
+        { ...location(otherActor), env },
+        { actor: otherActor, authority, target: small },
+      ).then((result) => {
+        completed.push("small");
+        return result;
+      });
+      await withinTest(
+        awaitGateBeforeSettlement(queued.promise, smaller, "small rebuild ended before admission"),
+        signal,
+      );
+      await append(first, "rewritten while yielding", actor, null);
+      release.resolve();
+      await withinTest(Promise.all([large, smaller]), signal);
+      expect(completed).toEqual(["small", "large"]);
+      await expect(
+        actor.sessions.withCompute(authority, first, (compute) =>
+          compute.execute({ type: "session.compute.status", input: first }),
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        actor.sessions.history(authority, {
+          type: "session.history.recent",
+          input: { ...first, options: { maxMessages: 10 } },
+        }),
+      ).resolves.toMatchObject({
+        totalMessages: 1,
+        messages: [{ content: [{ type: "text", text: "rewritten while yielding" }] }],
+      });
+    } finally {
+      release.resolve();
+      await Promise.allSettled([large, smaller]);
+      scheduled.mockRestore();
+      wrapped.mockRestore();
+    }
   });
 
   it("isolates equal session IDs and refuses foreign actor bindings and forged usage markers", async () => {
@@ -789,28 +909,12 @@ it("discards revoked partial projections and reconciles the complete active acto
       }
     },
   };
-  const withCompute = actor.sessions.withCompute;
-  const wrapped = vi
-    .spyOn(actor.sessions, "withCompute")
-    .mockImplementation((caller, selected, operation, signal) =>
-      withCompute(
-        caller,
-        selected,
-        (compute) =>
-          operation({
-            assertCurrent: compute.assertCurrent,
-            async execute(command) {
-              const result = await compute.execute(command);
-              if (command.type === "session.compute.projection.appendChunk") {
-                appendedChunk = true;
-                current = false;
-              }
-              return result;
-            },
-          }),
-        signal,
-      ),
-    );
+  const wrapped = observeCompute((type) => {
+    if (type === "session.compute.projection.appendChunk") {
+      appendedChunk = true;
+      current = false;
+    }
+  });
   try {
     await expect(
       reconcileSessionTranscriptIndexes(
@@ -857,35 +961,19 @@ it.each(["coalesce", "handoff"] as const)(
     const release = createDeferredCore();
     const checked = createDeferredCore();
     let held = false;
-    const withCompute = actor.sessions.withCompute;
-    const wrapped = vi
-      .spyOn(actor.sessions, "withCompute")
-      .mockImplementation((caller, selected, operation, signal) =>
-        withCompute(
-          caller,
-          selected,
-          (compute) =>
-            operation({
-              assertCurrent: compute.assertCurrent,
-              async execute(command) {
-                const result = await compute.execute(command);
-                if (command.type === "session.compute.store.status") {
-                  checked.resolve();
-                }
-                if (command.type === "session.compute.source.open" && !held) {
-                  held = true;
-                  entered.resolve();
-                  await release.promise;
-                  if (mode === "handoff") {
-                    throw new Error("interrupted projection preparation");
-                  }
-                }
-                return result;
-              },
-            }),
-          signal,
-        ),
-      );
+    const wrapped = observeCompute(async (type) => {
+      if (type === "session.compute.store.status") {
+        checked.resolve();
+      }
+      if (type === "session.compute.source.open" && !held) {
+        held = true;
+        entered.resolve();
+        await release.promise;
+        if (mode === "handoff") {
+          throw new Error("interrupted projection preparation");
+        }
+      }
+    });
     let waiting: Promise<void> | undefined;
     try {
       startSessionTranscriptIndexReconcile(database, binding);

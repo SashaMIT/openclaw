@@ -6,6 +6,7 @@ import {
   type IncognitoComputeOperations,
   type IncognitoComputeTarget,
 } from "./session-incognito-compute-contract.js";
+import type { IncognitoSessionFacts } from "./session-incognito-facts.types.js";
 
 export type IncognitoComputeScope = {
   assertCurrent(this: void): void;
@@ -16,15 +17,34 @@ export type IncognitoComputeScope = {
 };
 
 /** Cleanup owns only resources captured before dispatch; it never grants data access. */
-export async function withIncognitoCompute<T>(params: {
+export function withIncognitoCompute<T, Claim extends { assertCurrent(this: void): void }>(params: {
   target?: IncognitoComputeTarget;
-  assertCurrent(this: void): void;
-  disclose(): void;
-  execute: IncognitoComputeScope["execute"];
+  assertAuthority(this: void): void;
+  assertBorrowed(this: void): void;
+  captureClaim(sessionKey: string, facts?: IncognitoSessionFacts): Claim;
+  authorize(this: void, claim: Claim): void;
+  execute<Key extends keyof IncognitoComputeOperations>(
+    command: { type: Key; input: IncognitoComputeOperations[Key]["input"] },
+    observeFacts: (facts: readonly IncognitoSessionFacts[]) => void,
+  ): Promise<IncognitoComputeOperations[Key]["output"]>;
   cleanup: IncognitoComputeScope["execute"];
   operation(scope: IncognitoComputeScope): Promise<T>;
 }): Promise<T> {
   const target = structuredClone(params.target);
+  const selected = new Map<string, Claim>();
+  if (target) {
+    selected.set(target.sessionKey, params.captureClaim(target.sessionKey));
+  }
+  const observeFacts = (facts: readonly IncognitoSessionFacts[]) => {
+    if (!target) {
+      for (const fact of facts) {
+        if (!selected.has(fact.sessionKey)) {
+          selected.set(fact.sessionKey, params.captureClaim(fact.sessionKey, fact));
+        }
+      }
+    }
+  };
+  const disclose = () => selected.forEach(params.authorize);
   const sources = new Map<string, { sourceId: string; target: IncognitoComputeTarget }>();
   const locks = new Set<string>();
   const pending = new Set<Promise<unknown>>();
@@ -33,7 +53,11 @@ export async function withIncognitoCompute<T>(params: {
     if (!active) {
       throw new Error("Incognito compute scope is closed");
     }
-    params.assertCurrent();
+    params.assertAuthority();
+    params.assertBorrowed();
+    for (const source of selected.values()) {
+      source.assertCurrent();
+    }
   };
   const ownResources = (captured: SqliteWorkerCommand<IncognitoComputeOperations>) => {
     if (
@@ -71,65 +95,67 @@ export async function withIncognitoCompute<T>(params: {
       locks.add(request.lockJson);
     }
   };
-  try {
-    assertCurrent();
-    const result = await params.operation({
-      assertCurrent,
-      execute(command) {
-        assertCurrent();
-        const captured = structuredClone(command);
-        const input = captured.input;
-        if (
-          target &&
-          (isIncognitoStoreComputeCommand(captured) ||
-            !("sessionKey" in input) ||
-            input.sessionKey !== target.sessionKey ||
-            input.sessionId !== target.sessionId ||
-            input.lifecycleRevision !== target.lifecycleRevision ||
-            input.historical !== target.historical)
+  return (async () => {
+    try {
+      assertCurrent();
+      const result = await params.operation({
+        assertCurrent,
+        execute(command) {
+          assertCurrent();
+          const captured = structuredClone(command);
+          const input = captured.input;
+          if (
+            target &&
+            (isIncognitoStoreComputeCommand(captured) ||
+              !("sessionKey" in input) ||
+              input.sessionKey !== target.sessionKey ||
+              input.sessionId !== target.sessionId ||
+              input.lifecycleRevision !== target.lifecycleRevision ||
+              input.historical !== target.historical)
+          ) {
+            throw new Error("Incognito compute request belongs to another session generation");
+          }
+          if (isIncognitoComputeCommand(captured)) {
+            ownResources(captured);
+          }
+          const work = params.execute(captured, observeFacts).then((value) => {
+            assertCurrent();
+            disclose();
+            assertCurrent();
+            return value;
+          });
+          pending.add(work);
+          void work.finally(() => pending.delete(work)).catch(() => undefined);
+          return work;
+        },
+      });
+      assertCurrent();
+      disclose();
+      assertCurrent();
+      return result;
+    } finally {
+      active = false;
+      await Promise.allSettled(pending);
+      for (const { sourceId, target: sourceTarget } of sources.values()) {
+        while (
+          await params.cleanup({
+            type: "session.compute.source.release",
+            input: { ...sourceTarget, sourceId },
+          })
         ) {
-          throw new Error("Incognito compute request belongs to another session generation");
+          // Each acknowledged chunk releases its FIFO turn before the next cleanup chunk.
         }
-        if (isIncognitoComputeCommand(captured)) {
-          ownResources(captured);
-        }
-        const work = params.execute(captured).then((value) => {
-          assertCurrent();
-          params.disclose();
-          assertCurrent();
-          return value;
-        });
-        pending.add(work);
-        void work.finally(() => pending.delete(work)).catch(() => undefined);
-        return work;
-      },
-    });
-    assertCurrent();
-    params.disclose();
-    assertCurrent();
-    return result;
-  } finally {
-    active = false;
-    await Promise.allSettled(pending);
-    for (const { sourceId, target: sourceTarget } of sources.values()) {
-      while (
-        await params.cleanup({
-          type: "session.compute.source.release",
-          input: { ...sourceTarget, sourceId },
-        })
-      ) {
-        // Each acknowledged chunk releases its FIFO turn before the next cleanup chunk.
+      }
+      for (const lockJson of locks) {
+        await params.cleanup(
+          target
+            ? {
+                type: "session.compute.usage.releaseLock",
+                input: { ...target, request: lockJson },
+              }
+            : { type: "session.compute.store.releaseLock", input: { request: lockJson } },
+        );
       }
     }
-    for (const lockJson of locks) {
-      await params.cleanup(
-        target
-          ? {
-              type: "session.compute.usage.releaseLock",
-              input: { ...target, request: lockJson },
-            }
-          : { type: "session.compute.store.releaseLock", input: { request: lockJson } },
-      );
-    }
-  }
+  })();
 }
