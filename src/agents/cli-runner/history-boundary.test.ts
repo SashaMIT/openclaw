@@ -248,7 +248,7 @@ describe("CLI transcript account boundary", () => {
                 } else if (change === "rewrite") {
                   manager.removeTrailingEntries((entry) => entry.type === "message");
                 } else {
-                  manager.appendResetBoundary("intervening reset");
+                  manager.appendResetBoundary("reset");
                 }
               }
               return planned;

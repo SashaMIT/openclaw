@@ -61,17 +61,17 @@ export function readSessionTranscriptAnchorFactsInDatabase(
   return runSqliteDeferredTransactionSync(
     database.db,
     () => {
-      const entry = selection.contextAuthority
+      const contextEntry = selection.contextAuthority
         ? readSessionEntryRow(database, resolved.sessionKey)?.entry
         : undefined;
       const contextAuthority = selection.contextAuthority
         ? {
-            entry: entry && {
-              sessionId: entry.sessionId,
-              lifecycleRevision: entry.lifecycleRevision,
-              activeWriterRunId: entry.activeWriterRunId,
-              cliHistoryBoundary: entry.cliHistoryBoundary,
-              permissionMode: entry.permissionMode,
+            entry: contextEntry && {
+              sessionId: contextEntry.sessionId,
+              lifecycleRevision: contextEntry.lifecycleRevision,
+              activeWriterRunId: contextEntry.activeWriterRunId,
+              cliHistoryBoundary: contextEntry.cliHistoryBoundary,
+              permissionMode: contextEntry.permissionMode,
             },
             watermark: readSessionTranscriptWatermarkInDatabase(database, resolved.sessionId),
           }
@@ -79,10 +79,10 @@ export function readSessionTranscriptAnchorFactsInDatabase(
       // Session replacement and permission refusal precede transcript-anchor refusal.
       if (
         selection.contextAuthority &&
-        (!entry ||
-          entry.sessionId !== resolved.sessionId ||
+        (!contextEntry ||
+          contextEntry.sessionId !== resolved.sessionId ||
           (selection.contextAuthority !== true &&
-            entry.permissionMode !== selection.contextAuthority.permissionMode))
+            contextEntry.permissionMode !== selection.contextAuthority.permissionMode))
       ) {
         return { anchors: [], contextAuthority };
       }

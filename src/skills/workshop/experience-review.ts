@@ -218,7 +218,7 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
             () => abortSignal.throwIfAborted(),
           ),
         ({ scope, expectedIdentity, assertCurrent }) => {
-          const assertPhysicalCurrent = () => {
+          const assertSourceIdentity = () => {
             abortSignal.throwIfAborted();
             if (expectedIdentity) {
               assertExistingDatabaseIdentity(
@@ -228,7 +228,7 @@ async function runSkillExperienceReviewInner(candidate: ExperienceReviewCandidat
               );
             }
           };
-          return prepare({ ...candidate.source, ...scope }, assertPhysicalCurrent, assertCurrent);
+          return prepare({ ...candidate.source, ...scope }, assertSourceIdentity, assertCurrent);
         },
         abortSignal,
       );
