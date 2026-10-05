@@ -149,6 +149,7 @@ export function resolveExecNotificationDefaults(defaults?: ExecToolDefaults) {
       const read = await readSessionEntriesFromStoreInWorker({
         agentId: notifyAgentSession.agentId,
         sessionKeys: [notifySessionKey],
+        snapshotFields: [],
         storePath: resolveSessionStorePathCore(defaults.config.session?.store, {
           agentId: notifyAgentSession.agentId,
         }),
@@ -173,6 +174,9 @@ export function resolveExecNotificationDefaults(defaults?: ExecToolDefaults) {
     notifySessionKey,
     resolveSubagentSession,
     notifyDeliveryContext,
+    // Periodic heartbeat and automation turns keep heartbeat delivery for their commands.
+    notifyFromConversationTurn:
+      defaults?.trigger === "user" || defaults?.continuesConversation === true,
   };
 }
 
