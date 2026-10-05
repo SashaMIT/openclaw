@@ -423,26 +423,48 @@ export function createIncognitoSessionFacts(
         },
         withCompute: <T>(
           authority: IncognitoSessionAuthority,
-          target: IncognitoComputeTarget,
+          target: IncognitoComputeTarget | undefined,
           operation: (scope: IncognitoComputeScope) => Promise<T>,
           signal?: AbortSignal,
         ): Promise<T> => {
-          const held = claim(target.sessionKey, assertBorrowed);
+          const held = target ? claim(target.sessionKey, assertBorrowed) : undefined;
+          const selected = new Map<string, IncognitoSessionClaim>();
           return retain(
             withIncognitoCompute({
               target,
               assertCurrent() {
                 authority.assertCurrent();
-                held.assertCurrent();
+                assertBorrowed();
+                held?.assertCurrent();
+                for (const source of selected.values()) {
+                  source.assertCurrent();
+                }
               },
-              disclose: () => held.authorize(authority, "commit"),
+              disclose() {
+                held?.authorize(authority, "commit");
+                for (const source of selected.values()) {
+                  source.authorize(authority, "commit");
+                }
+              },
               operation,
               execute: (command) =>
                 perform(
                   authority,
                   command,
                   isIncognitoComputeWrite(command.type),
-                  (result) => result.value,
+                  (result) => {
+                    if (!target) {
+                      for (const facts of result.facts) {
+                        if (!selected.has(facts.sessionKey)) {
+                          selected.set(
+                            facts.sessionKey,
+                            claim(facts.sessionKey, assertBorrowed, facts),
+                          );
+                        }
+                      }
+                    }
+                    return result.value;
+                  },
                   signal,
                 ),
               cleanup: (command) =>
