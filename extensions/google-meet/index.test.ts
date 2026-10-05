@@ -51,7 +51,7 @@ import {
   normalizeDialInNumber,
   prefixDtmfWait,
 } from "./src/transports/twilio.js";
-import type { GoogleMeetJoinResult, GoogleMeetSession } from "./src/transports/types.js";
+import type { GoogleMeetSession } from "./src/transports/types.js";
 import { testing as googleMeetPluginTesting } from "./test-api.js";
 
 let meetingTestState: ReturnType<typeof useMeetingTestState>;
@@ -1785,7 +1785,7 @@ describe("google-meet plugin", () => {
     run: (context: {
       callGatewayFromCli: ReturnType<typeof mockLocalMeetBrowserRequestWithTabState>;
       methods: ReturnType<typeof setup>["methods"];
-      joined: GoogleMeetJoinResult;
+      joined: Awaited<ReturnType<ReturnType<typeof meetRuntime>["join"]>>;
     }) => Promise<T>,
   ): Promise<T> {
     // Durable state workers must observe the same native OS identity as their owner.
@@ -1793,7 +1793,7 @@ describe("google-meet plugin", () => {
     const { methods } = setup({ defaultMode: "transcribe", defaultTransport: "chrome" });
     const joined = (await invokeGoogleMeetGatewayMethodForTest(methods, "googlemeet.join", {
       url: MEET_URL,
-    })) as GoogleMeetJoinResult;
+    })) as Awaited<ReturnType<ReturnType<typeof meetRuntime>["join"]>>;
     return await run({ callGatewayFromCli, methods, joined });
   }
 
@@ -3123,7 +3123,7 @@ describe("google-meet plugin", () => {
     const join = (await invokeGoogleMeetGatewayMethodForTest(methods, "googlemeet.join", {
       url: MEET_URL,
       message: "Say exactly: hello.",
-    })) as GoogleMeetJoinResult;
+    })) as Awaited<ReturnType<ReturnType<typeof meetRuntime>["join"]>>;
     expect(join.spoken).toBe(false);
     expect(join.session.chrome?.health?.speechBlockedReason).toBe("browser-unverified");
 
