@@ -1,5 +1,4 @@
 import { isDeepStrictEqual } from "node:util";
-import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   createSqliteWorkerOperationAdmission,
@@ -18,14 +17,19 @@ import {
   type IncognitoComputeTarget,
 } from "./session-incognito-compute-contract.js";
 import { withIncognitoCompute, type IncognitoComputeScope } from "./session-incognito-compute.js";
-import type {
-  IncognitoSessionAuthority,
-  IncognitoSessionCreate,
-  IncognitoSessionFacts,
-  IncognitoSessionRead,
-  IncognitoSessionOperations,
+import {
+  authorizeIncognitoSessionFacts,
+  type IncognitoSessionAuthority,
+  type IncognitoSessionCreate,
+  type IncognitoSessionFacts,
+  type IncognitoSessionRead,
+  type IncognitoSessionOperations,
 } from "./session-incognito-contract.js";
-import type { IncognitoHistoryOperations } from "./session-incognito-history-contract.js";
+import {
+  incognitoHistoryKeys,
+  isIncognitoHistoryCommand,
+  type IncognitoHistoryOperations,
+} from "./session-incognito-history-contract.js";
 import {
   incognitoLifecycleKeys,
   isIncognitoLifecycleCommand,
@@ -73,18 +77,6 @@ export type IncognitoSessionActor = {
   readonly sessions: ReturnType<ReturnType<typeof createIncognitoSessionFacts>["bind"]>;
   assertCurrent(): void;
 };
-
-function authorizeSessionFacts(
-  authority: IncognitoSessionAuthority,
-  stage: "transaction" | "commit",
-  facts: IncognitoSessionFacts,
-) {
-  const authorization: unknown = authority.authorize?.(stage, structuredClone(facts));
-  if (isPromiseLike(authorization)) {
-    void Promise.resolve(authorization).catch(() => undefined);
-    throw new Error("Incognito session grants must remain synchronous");
-  }
-}
 
 /** Actor-local projection owned by its lifetime, never a roster or full-entry cache. */
 export function createIncognitoSessionFacts(
@@ -161,7 +153,7 @@ export function createIncognitoSessionFacts(
           if (!facts) {
             throw new Error("Incognito session facts are unavailable");
           }
-          authorizeSessionFacts(authority, stage, facts);
+          authorizeIncognitoSessionFacts(authority, stage, facts);
           authority.assertCurrent();
           assertCurrent();
         });
@@ -286,7 +278,7 @@ export function createIncognitoSessionFacts(
                   authority.assertCurrent();
                   assertActorCurrent();
                   for (const facts of value.facts) {
-                    authorizeSessionFacts(authority, "commit", facts);
+                    authorizeIncognitoSessionFacts(authority, "commit", facts);
                   }
                   authority.assertCurrent();
                   assertActorCurrent();
@@ -354,10 +346,15 @@ export function createIncognitoSessionFacts(
                   const lifecycleKeys = isIncognitoLifecycleCommand(captured)
                     ? incognitoLifecycleKeys(captured, identity)
                     : undefined;
+                  const historyKeys = isIncognitoHistoryCommand(captured)
+                    ? incognitoHistoryKeys(captured)
+                    : undefined;
                   if (
                     new Set(keys).size !== keys.length ||
+                    (historyKeys && !isDeepStrictEqual(keys, historyKeys)) ||
                     (lifecycleKeys && !isDeepStrictEqual(keys, lifecycleKeys)) ||
-                    ("sessionKey" in captured.input &&
+                    (!historyKeys &&
+                      "sessionKey" in captured.input &&
                       (keys.length !== 1 || keys[0] !== captured.input.sessionKey)) ||
                     (request.stage === "commit" && !isDeepStrictEqual(keys, [...targets]))
                   ) {
@@ -370,7 +367,7 @@ export function createIncognitoSessionFacts(
                     }
                   }
                   for (const entry of facts) {
-                    authorizeSessionFacts(
+                    authorizeIncognitoSessionFacts(
                       authority,
                       request.stage === "prepare" ? "transaction" : request.stage,
                       entry,
@@ -423,26 +420,48 @@ export function createIncognitoSessionFacts(
         },
         withCompute: <T>(
           authority: IncognitoSessionAuthority,
-          target: IncognitoComputeTarget,
+          target: IncognitoComputeTarget | undefined,
           operation: (scope: IncognitoComputeScope) => Promise<T>,
           signal?: AbortSignal,
         ): Promise<T> => {
-          const held = claim(target.sessionKey, assertBorrowed);
+          const held = target ? claim(target.sessionKey, assertBorrowed) : undefined;
+          const selected = new Map<string, IncognitoSessionClaim>();
           return retain(
             withIncognitoCompute({
               target,
               assertCurrent() {
                 authority.assertCurrent();
-                held.assertCurrent();
+                assertBorrowed();
+                held?.assertCurrent();
+                for (const source of selected.values()) {
+                  source.assertCurrent();
+                }
               },
-              disclose: () => held.authorize(authority, "commit"),
+              disclose() {
+                held?.authorize(authority, "commit");
+                for (const source of selected.values()) {
+                  source.authorize(authority, "commit");
+                }
+              },
               operation,
               execute: (command) =>
                 perform(
                   authority,
                   command,
                   isIncognitoComputeWrite(command.type),
-                  (result) => result.value,
+                  (result) => {
+                    if (!target) {
+                      for (const facts of result.facts) {
+                        if (!selected.has(facts.sessionKey)) {
+                          selected.set(
+                            facts.sessionKey,
+                            claim(facts.sessionKey, assertBorrowed, facts),
+                          );
+                        }
+                      }
+                    }
+                    return result.value;
+                  },
                   signal,
                 ),
               cleanup: (command) =>

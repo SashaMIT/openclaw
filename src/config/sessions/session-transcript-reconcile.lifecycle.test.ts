@@ -267,7 +267,9 @@ describe("session transcript reconcile worker lifecycle", () => {
       for (const options of agents) {
         startSessionTranscriptIndexReconcile(options);
       }
-      const completion = Promise.all(agents.map(waitForSessionTranscriptIndexReconcile));
+      const completion = Promise.all(
+        agents.map((agent) => waitForSessionTranscriptIndexReconcile(agent)),
+      );
       try {
         await fence.paused;
         await allQueued.promise;
@@ -379,7 +381,7 @@ describe("session transcript reconcile worker lifecycle", () => {
       releaseUnrelated.resolve();
       await Promise.all([
         scopedWait,
-        ...[first, later, unrelated].map(waitForSessionTranscriptIndexReconcile),
+        ...[first, later, unrelated].map((agent) => waitForSessionTranscriptIndexReconcile(agent)),
       ]);
       for (const options of [first, later, unrelated]) {
         await closeOpenClawAgentDatabaseByPathAsync(resolveOpenClawAgentSqlitePath(options));

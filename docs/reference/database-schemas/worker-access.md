@@ -470,13 +470,30 @@ schemas, retention, permissions, and update behavior are unchanged; this stage
 retires no T1 sites. Pending-input staging, source, and withdrawal routing remain
 separate activation prerequisites.
 
-### Incognito history and manager reads (P7f1, inactive)
+### Incognito history, compute, and manager reads (P7f, inactive)
 
 Transcript-anchor, accounting, and bounded-tail facades accept an explicit
 captured actor and session generation. Their existing selectors execute on its
 retained connection. Anchor publication consumes the acknowledged facts
 synchronously inside the original FIFO turn; later writes cannot overtake it.
 Read grants and disclosure retain current caller authority.
+
+Usage and reconciliation can select the complete actor store, including retained
+transcript windows. Inventory, refresh locks, cache publication, projection
+preflight, framing, and orphan cleanup stay on the actor. Each command releases
+its FIFO turn before compute calls back for another command. The enclosing
+operation retains actor lifetime through dependent frames and exact cleanup.
+Deferred reconciliation retains that same incarnation through coalesced passes,
+failure handoffs, and projection waits. Readiness commands only inspect projection
+status; they never sweep or rebuild it. Usage summaries, logs, and time series use
+actor extraction while preserving the selected cache's physical owner, including
+a durable cache paired with an incognito transcript. Acknowledged refresh results
+publish through the existing usage owner. Accepted work settles independently of
+scheduler cancellation; new work refuses closed admission.
+
+Fork facades use the existing parent-fork kernels, preserving token decisions,
+skip patches, CLI bindings, same-store atomicity, and cross-agent source-first
+sequencing without holding one actor's FIFO while awaiting another.
 
 `SessionManager.readSessionContextAsync` supports awaited consumption of a
 full-fidelity detached context, then validates its original source before
@@ -490,10 +507,30 @@ borrow must remain live. Release or loss refuses further database work on that
 target, even when a successor actor exists. Accepted context consumers retain
 cleanup outside the actor FIFO.
 
-Production still supplies no actor bindings. This prerequisite removes no native
-routes or T1 sites and changes no schema, retention, durability, session expiry,
-or update behavior. Compute, fork, and deferred projection composition remain
-separate prerequisites for atomic activation.
+Production still supplies no actor bindings. Atomic activation must replace the
+remaining native facade selection and remove host calls to the memory-source
+extraction bridge together; the connection-bound framing kernel remains inside
+the actor. This prerequisite removes no native routes or T1 sites and changes no
+schema, retention, durability, session expiry, or update behavior.
+
+### Incognito history and Memory wiring (P7j, inactive)
+
+History acquisition and Memory entry, observer, reset-recall, and corpus facades
+accept an explicitly captured actor source. Ordinary production calls retain
+the host owner until atomic activation. The actor uses the existing history
+commands and synchronous snapshot kernels; it never extracts Memory source
+bytes through a native caller-thread bridge. Memory observers receive the
+original messages, while ordinary indexing retains its reduced projection.
+Corpus reads retain the actor's captured session claims and return metadata
+from that same memory database without scanning archive directories.
+
+The complete read, asynchronous projection or consumer, final validation, and
+cleanup retain their original owner. Actor snapshots and current grants fence
+Memory callbacks and reject disclosure after mutation, release, or revocation.
+History uses the existing FIFO acceptance boundary; durable native SDK writers
+remain covered by its native mutation witness. No new worker service, schema,
+retention, durability, environment switch, or update behavior is introduced.
+Native routes and T1 counts remain unchanged until the atomic P7 cutover.
 
 ### Existing worker flows
 

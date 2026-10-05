@@ -423,10 +423,9 @@ async function receive(request: SqliteWorkerRequest): Promise<void> {
     const errorContext =
       request.stateContext ??
       (request.type === "execute-frame" ? stateContexts.get(request.actor) : undefined);
-    const sharedState =
-      errorContext && !executed
-        ? encodeOpenClawStateWorkerError(failure, { includeOrdinary: true })
-        : undefined;
+    const sharedState = !executed
+      ? encodeOpenClawStateWorkerError(failure, { includeOrdinary: Boolean(errorContext) })
+      : undefined;
     reply = {
       id: request.id,
       ok: false,

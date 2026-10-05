@@ -1,3 +1,4 @@
+import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import type { SqliteWorkerEphemeralTarget } from "../../infra/sqlite-worker-contract.js";
 import type { CommittedSessionSharingFacts } from "./session-accessor.sqlite-sharing-acquisition.js";
 import type { IncognitoComputeOperations } from "./session-incognito-compute-contract.js";
@@ -59,3 +60,15 @@ export type IncognitoSessionAuthority = {
   /** Synchronous host policy only. Never query the actor from a native grant. */
   authorize?(stage: "transaction" | "commit", facts: IncognitoSessionFacts): void;
 };
+
+export function authorizeIncognitoSessionFacts(
+  authority: IncognitoSessionAuthority,
+  stage: "transaction" | "commit",
+  facts: IncognitoSessionFacts,
+) {
+  const authorization: unknown = authority.authorize?.(stage, structuredClone(facts));
+  if (isPromiseLike(authorization)) {
+    void Promise.resolve(authorization).catch(() => undefined);
+    throw new Error("Incognito session grants must remain synchronous");
+  }
+}
