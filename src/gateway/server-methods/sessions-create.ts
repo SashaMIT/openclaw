@@ -107,7 +107,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     }
     const parentSessionKey = normalizeOptionalString(p.parentSessionKey);
     const creation = resolveOperatorSessionCreation(client, { allowTrustedHint: true });
-    if (p.createdVia && creation.via !== "operator") {
+    if (p.surface && creation.via !== "operator") {
       respond(
         false,
         undefined,
@@ -118,7 +118,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     const sessionCreation = await prepareSkillLibrarySessionCreation(
       client,
       context.getRuntimeConfig,
-      { ...creation, via: p.createdVia ?? creation.via },
+      { ...creation, ...(p.surface ? { surface: p.surface } : {}) },
     );
     const spawnRequesterSessionKey =
       sessionCreation.via === "spawn"

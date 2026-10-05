@@ -7,12 +7,13 @@ import {
 
 describe("sessions.create schema", () => {
   it("accepts only the dock presentation surface without accepting creator attribution", () => {
-    expect(validateSessionsCreateParams({ createdVia: "plugin-dock" })).toBe(true);
-    for (const createdVia of ["operator", "spawn", "internal", "plugin", "", null]) {
-      expect(validateSessionsCreateParams({ createdVia })).toBe(false);
+    expect(validateSessionsCreateParams({ surface: "plugin-dock" })).toBe(true);
+    for (const surface of ["operator", "spawn", "internal", "plugin", "", null]) {
+      expect(validateSessionsCreateParams({ surface })).toBe(false);
     }
+    expect(validateSessionsCreateParams({ createdVia: "plugin-dock" })).toBe(false);
     expect(
-      validateSessionsCreateParams({ createdVia: "plugin-dock", createdActor: { type: "system" } }),
+      validateSessionsCreateParams({ surface: "plugin-dock", createdActor: { type: "system" } }),
     ).toBe(false);
   });
 

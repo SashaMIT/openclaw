@@ -169,12 +169,13 @@ describe("SQLite session row persistence", () => {
     },
   );
 
-  it.each(["operator", "plugin-dock"] as const)(
-    "protects required profile provenance for %s during replacement",
-    async (createdVia) => {
+  it.each([undefined, "plugin-dock"] as const)(
+    "protects required profile provenance and surface %s during replacement",
+    async (createdSurface) => {
       const scope = createScope("stamp");
       const stamp = {
-        createdVia,
+        createdVia: "operator" as const,
+        ...(createdSurface ? { createdSurface } : {}),
         createdActor: { type: "human" as const, source: "profile" as const, id: "profile-creator" },
         createdAt: 10,
         sandbox: "required" as const,
@@ -184,6 +185,7 @@ describe("SQLite session row persistence", () => {
         sessionId: "replacement",
         updatedAt: 20,
         createdVia: "plugin",
+        createdSurface: createdSurface ? undefined : "plugin-dock",
         createdActor: { type: "agent", id: "replacement-agent" },
         createdAt: 20,
       };
@@ -191,6 +193,7 @@ describe("SQLite session row persistence", () => {
         await patchSessionEntryCore(scope, () => replacement, { replaceEntry: true }),
       ).toMatchObject(stamp);
       expect(loadSessionEntry(scope)).toMatchObject({ sessionId: "replacement", ...stamp });
+      expect(loadSessionEntry(scope)?.createdSurface).toBe(createdSurface);
       const row = openOpenClawAgentDatabase(scope)
         .db.prepare(
           "SELECT created_actor_type, created_actor_id, created_via, created_at, entry_json FROM session_nodes WHERE session_key = ?",
@@ -199,10 +202,11 @@ describe("SQLite session row persistence", () => {
       expect(row).toMatchObject({
         created_actor_type: "human",
         created_actor_id: "profile-creator",
-        created_via: createdVia,
+        created_via: "operator",
         created_at: 10,
       });
       expect(JSON.parse(String(row?.entry_json))).toMatchObject(stamp);
+      expect(JSON.parse(String(row?.entry_json)).createdSurface).toBe(createdSurface);
     },
   );
 
@@ -245,12 +249,14 @@ describe("SQLite session row persistence", () => {
         updatedAt: 20,
         createdVia: "operator",
         createdActor: { type: "human", source: "profile", id: "new-profile" },
+        createdSurface: "plugin-dock",
       }),
       { replaceEntry: true },
     );
     const persisted = loadSessionEntry(scope);
     expect(persisted).toMatchObject({ sessionId: "replacement", createdVia: "operator" });
     expect(persisted?.createdActor).toBeUndefined();
+    expect(persisted?.createdSurface).toBeUndefined();
     expect(persisted).not.toHaveProperty("sandbox");
     expect(persisted).not.toHaveProperty("label");
   });

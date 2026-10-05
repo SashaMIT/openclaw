@@ -37,7 +37,8 @@ it("excludes dock conversations before ownership, people counts, and pagination"
   const store = {
     "agent:main:board-agent": entry({
       updatedAt: 3,
-      createdVia: "plugin-dock",
+      createdVia: "operator",
+      createdSurface: "plugin-dock",
       createdActor: { type: "human", source: "profile", id: "profile-bob" },
     }),
     "agent:main:first": entry({

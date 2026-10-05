@@ -133,7 +133,7 @@ export function sessionClassificationForRow(
     ...(route?.accountId ? { accountId: route.accountId } : {}),
     ...(peerKind ? { peerKind } : {}),
     isMain,
-    isDock: entry?.createdVia === "plugin-dock",
+    isDock: entry?.createdSurface === "plugin-dock",
     isBackground: BACKGROUND_CLASSIFICATIONS.has(classification),
   };
 }

@@ -119,7 +119,6 @@ function normalizeSqliteCreatedVia(value: SessionEntry["createdVia"]) {
     value === "talk" ||
     value === "run" ||
     value === "plugin" ||
-    value === "plugin-dock" ||
     value === "internal"
     ? value
     : null;

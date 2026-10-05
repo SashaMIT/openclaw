@@ -2,8 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
-import { parseSqliteTableDefinition } from "../infra/sqlite-schema-contract-assembly.js";
-import { extractSqliteTableSchema, quoteSqliteIdentifier } from "../infra/sqlite-schema-sql.js";
 import { resolveOpenClawAgentSqlitePath } from "./openclaw-agent-db.paths.js";
 
 // Frozen from f69617aa3818d805889692918ee7f51bef666597 as the original schema-21 migration input.
@@ -58,39 +56,9 @@ export function restoreEmptyV21StorageForHistoricalFixture(database: DatabaseSyn
     for (const table of tables) {
       database.exec(`DROP TABLE ${table}`);
     }
-    // Rebuild the node from frozen DDL so its CHECK and columns are historical too.
-    const nodes = extractSqliteTableSchema(OPENCLAW_AGENT_SCHEMA_V21_SQL, "session_nodes");
-    const columns = ["rowid", ...parseSqliteTableDefinition(nodes, "session_nodes").columns.keys()]
-      .map(quoteSqliteIdentifier)
-      .join(", ");
-    const dependents = database
-      .prepare(`SELECT type, name, sql FROM sqlite_schema WHERE sql IS NOT NULL
-        AND (type IN ('trigger', 'view') OR (type = 'index' AND tbl_name = 'session_nodes'))
-        ORDER BY CASE type WHEN 'view' THEN 0 WHEN 'index' THEN 1 ELSE 2 END, name`)
-      .all();
-    for (const type of ["trigger", "view"]) {
-      for (const dependent of dependents) {
-        if (dependent.type === type && typeof dependent.name === "string") {
-          database.exec(`DROP ${type.toUpperCase()} ${quoteSqliteIdentifier(dependent.name)}`);
-        }
-      }
-    }
-    database.exec(`
-      ${nodes.replace("IF NOT EXISTS session_nodes", "session_nodes_v21_fixture")}
-      INSERT INTO session_nodes_v21_fixture (${columns}) SELECT ${columns} FROM session_nodes;
-      DROP TABLE session_nodes;
-      ALTER TABLE session_nodes_v21_fixture RENAME TO session_nodes;
-    `);
+    // Dropping the snapshot table also removes its revision triggers.
+    database.exec("ALTER TABLE session_nodes DROP COLUMN snapshot_revision");
     database.exec(OPENCLAW_AGENT_SCHEMA_V21_SQL);
-    for (const dependent of dependents) {
-      if (
-        typeof dependent.name === "string" &&
-        typeof dependent.sql === "string" &&
-        !database.prepare("SELECT 1 FROM sqlite_schema WHERE name = ?").get(dependent.name)
-      ) {
-        database.exec(dependent.sql);
-      }
-    }
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");

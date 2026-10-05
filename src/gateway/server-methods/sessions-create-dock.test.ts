@@ -55,14 +55,15 @@ test("dock creation retains human access and sandboxing through discovery and ex
   expect(
     await directSessionReq(
       "sessions.create",
-      { key: dockKey, displayName: "Board agent", createdVia: "plugin-dock" },
+      { key: dockKey, displayName: "Board agent", surface: "plugin-dock" },
       options,
     ),
   ).toMatchObject({ ok: true });
   const scope = { agentId: "main", sessionKey: dockKey, storePath };
   const dock = loadSessionEntry(scope);
   expect(dock).toMatchObject({
-    createdVia: "plugin-dock",
+    createdVia: "operator",
+    createdSurface: "plugin-dock",
     createdActor: { type: "human", source: "profile", id: profile.id },
     sandbox: "required",
     displayName: "Board agent",
@@ -72,25 +73,34 @@ test("dock creation retains human access and sandboxing through discovery and ex
   ).toMatchObject({ ok: true, payload: { sessions: [{ key: normalKey }], totalCount: 1 } });
   expect(await directSessionReq("sessions.describe", { key: dockKey }, options)).toMatchObject({
     ok: true,
-    payload: { session: { key: dockKey, isDock: true, sharingRole: "owner" } },
+    payload: {
+      session: {
+        key: dockKey,
+        isDock: true,
+        createdVia: "operator",
+        createdSurface: "plugin-dock",
+        sharingRole: "owner",
+      },
+    },
   });
   expect(await directSessionReq("sessions.get", { key: dockKey }, options)).toMatchObject({
     ok: true,
   });
 
   // Adoption cannot rewrite either a legacy conversation or a dock's creation stamp.
-  for (const [key, createdVia] of [
-    [normalKey, "operator"],
+  for (const [key, createdSurface] of [
+    [normalKey, undefined],
     [dockKey, "plugin-dock"],
   ] as const) {
     expect(
-      await directSessionReq("sessions.create", { key, createdVia: "plugin-dock" }, options),
+      await directSessionReq("sessions.create", { key, surface: "plugin-dock" }, options),
     ).toMatchObject({ ok: true });
     expect(loadSessionEntry({ ...scope, sessionKey: key })).toMatchObject({
-      createdVia,
+      createdVia: "operator",
       createdActor: { type: "human", source: "profile", id: profile.id },
       sandbox: "required",
     });
+    expect(loadSessionEntry({ ...scope, sessionKey: key })?.createdSurface).toBe(createdSurface);
   }
 });
 
@@ -103,7 +113,7 @@ test("dock presentation cannot replace a trusted spawn creation contract", async
   expect(
     await directSessionReq(
       "sessions.create",
-      { key: "agent:main:dashboard:spawn", createdVia: "plugin-dock" },
+      { key: "agent:main:dashboard:spawn", surface: "plugin-dock" },
       { client },
     ),
   ).toMatchObject({

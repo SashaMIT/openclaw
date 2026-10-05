@@ -58,7 +58,7 @@ describe("native UI roster refresh", () => {
     const key = "agent:main:board-agent";
     const request = vi.fn(async (method: string) => {
       if (method === "sessions.create") {
-        return { key, entry: { sessionId: "board-agent", createdVia: "plugin-dock" } };
+        return { key, entry: { sessionId: "board-agent", createdSurface: "plugin-dock" } };
       }
       if (method === "sessions.list") {
         return sessionsResult([], 1);
@@ -72,13 +72,13 @@ describe("native UI roster refresh", () => {
       fixture.host.sessions.create({
         agentId: "main",
         displayName: "Board agent",
-        createdVia: "plugin-dock",
+        surface: "plugin-dock",
       }),
     ).resolves.toBe(key);
     expect(request).toHaveBeenCalledWith("sessions.create", {
       agentId: "main",
       displayName: "Board agent",
-      createdVia: "plugin-dock",
+      surface: "plugin-dock",
     });
     expect(request).toHaveBeenCalledWith(
       "sessions.list",

@@ -211,7 +211,7 @@ same as an ordinary conversation.
 For boards with an older Board agent conversation, the next **Board agent** use
 creates a new dock conversation and saves its reference. The old conversation
 keeps its history and remains an ordinary session that you can archive; its
-creation provenance is not rewritten.
+creation surface and provenance are not rewritten.
 
 The Board agent is the only model used by the board, invoked on demand to change
 columns, rules, scope, or pins using these tools:

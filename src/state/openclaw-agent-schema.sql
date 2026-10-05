@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS session_nodes (
   updated_at INTEGER NOT NULL,
   status TEXT CHECK (status IS NULL OR status IN ('running', 'done', 'failed', 'killed', 'timeout')),
   created_at INTEGER,
-  created_via TEXT CHECK (created_via IS NULL OR created_via IN ('operator', 'spawn', 'channel', 'cron', 'talk', 'run', 'plugin', 'plugin-dock', 'internal')),
+  created_via TEXT CHECK (created_via IS NULL OR created_via IN ('operator', 'spawn', 'channel', 'cron', 'talk', 'run', 'plugin', 'internal')),
   created_actor_type TEXT CHECK (created_actor_type IS NULL OR created_actor_type IN ('human', 'agent', 'system')),
   created_actor_id TEXT,
   owner_actor_type TEXT,

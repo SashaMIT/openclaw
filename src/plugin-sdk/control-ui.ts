@@ -243,7 +243,7 @@ export type ControlUiHost = {
       /** Presentation title without a unique label claim. */
       displayName?: string;
       /** Immutable dock surface; preserves the authenticated operator's creator identity. */
-      createdVia?: "plugin-dock";
+      surface?: "plugin-dock";
     }) => Promise<string | null>;
     patch: (
       session: BoardGetParams,

@@ -276,11 +276,12 @@ Results contain `sessions` and the Gateway's `hasMore`, `nextOffset`, and
 `totalCount` pagination metadata.
 
 Create a conversation with `host.sessions.create({ agentId, displayName?, label?,
-createdVia? })`. `displayName` is a reusable display title; `label` is a unique
+surface? })`. `displayName` is a reusable display title; `label` is a unique
 session label. For a conversation owned by a plugin page's dock, pass
-`createdVia: "plugin-dock"`. This immutable creation-surface marker hides the
+`surface: "plugin-dock"`. This immutable creation-surface marker hides the
 conversation from ordinary session lists without changing its human creator,
-access, sharing, or sandbox rules. Rows expose `isDock` and `createdVia`.
+access, sharing, or sandbox rules. Rows expose `isDock` and `createdSurface`;
+`createdVia` retains its ordinary operator provenance.
 Independent host list queries exclude dock conversations by default; pass
 `excludeDock: false` when deliberately including them.
 The session key remains usable with `host.dock.openSession` and direct reads.

@@ -715,7 +715,7 @@ it.each([undefined, "agent:main:legacy-board-conversation"])(
     expect(page.fixture.host.sessions.create).toHaveBeenCalledExactlyOnceWith({
       agentId: "main",
       displayName: "Sessions board · Team sessions",
-      createdVia: "plugin-dock",
+      surface: "plugin-dock",
     });
     if (previousSessionKey) {
       expect(page.request).toHaveBeenCalledWith("sessions.describe", { key: previousSessionKey });

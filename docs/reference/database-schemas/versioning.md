@@ -20,13 +20,6 @@ When Gateway startup encounters a newer database schema, it exits with status 78
 
 Changes may stay at the same schema version only when downgraded readers remain safe. New tables qualify because older builds ignore them. An explicitly compatible column on an existing table qualifies only when its declaration is exactly one bare nullable SQLite `STRICT` datatype: `ANY`, `BLOB`, `INT`, `INTEGER`, `REAL`, or `TEXT`. The declaration cannot have a default, `NOT NULL`, a primary or unique key, a check, a reference, a collation, a generated expression, or another suffix. Constrained existing-table additions require a schema-version bump or a companion table instead.
 
-The `plugin-dock` creation surface requires
-[agent schema 25](/reference/database-schemas/agent-schema-history#dock-conversation-creation-surface):
-older builds cannot admit its widened `created_via` constraint. The existing
-maintenance owner migrates the node table without changing human creator
-authority or transcript storage. Preserve a verified pre-upgrade backup; binary
-rollback alone cannot reopen the migrated database.
-
 Linux Node worker cleanup uses the additive `node_worker_launch_process_scopes`
 companion table. Its launch-bound `linux-subreaper` certificate records kernel
 descendant extinction independently of `node_worker_launch_cleanup.lineage_settled`.

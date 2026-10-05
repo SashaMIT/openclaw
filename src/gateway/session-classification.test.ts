@@ -21,21 +21,22 @@ function classification(params: {
 }
 
 describe("sessionClassificationForRow", () => {
-  it.each([undefined, "operator", "plugin", "plugin-dock"] as const)(
+  it.each([undefined, "plugin-dock"] as const)(
     "classifies dock presentation from immutable creation surface: %s",
-    (createdVia) => {
+    (createdSurface) => {
       expect(
         classification({
           key: "agent:main:dashboard:board-agent",
           isMain: false,
           entry: entry({
-            createdVia,
+            createdVia: "operator",
+            createdSurface,
             createdActor: { type: "human", source: "profile", id: "ada" },
           }),
         }),
       ).toMatchObject({
         classification: "dashboard",
-        isDock: createdVia === "plugin-dock",
+        isDock: createdSurface === "plugin-dock",
         isBackground: false,
       });
     },

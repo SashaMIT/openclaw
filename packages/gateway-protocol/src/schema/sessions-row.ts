@@ -231,10 +231,11 @@ export const SessionRowSchema = Type.Object(
         Type.Literal("talk"),
         Type.Literal("run"),
         Type.Literal("plugin"),
-        Type.Literal("plugin-dock"),
         Type.Literal("internal"),
       ]),
     ),
+    /** Immutable presentation surface; independent of creation provenance. */
+    createdSurface: Type.Optional(Type.Literal("plugin-dock")),
     createdActor: Type.Optional(SessionCreatedActorSchema),
     owner: Type.Optional(SessionOwnerSchema),
     participants: Type.Optional(

@@ -194,7 +194,8 @@ describe("resolveSessionNavigation", () => {
       key: "agent:main:board-agent",
       kind: "direct",
       isDock: true,
-      createdVia: "plugin-dock",
+      createdVia: "operator",
+      createdSurface: "plugin-dock",
     };
     const navigation = resolveSessionNavigation({
       result: sessionsResult([{ key: "agent:main:chat", kind: "direct" }, dock]),

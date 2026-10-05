@@ -333,7 +333,7 @@ export function createSessionsBoardController(host: BoardDockHost, notify: () =>
               (await host.sessions.create({
                 agentId,
                 displayName: label,
-                createdVia: "plugin-dock",
+                surface: "plugin-dock",
               })) ?? undefined;
             if (!sessionKey) {
               throw new Error(t("workboard.sessionsBoard.agentCreateFailed"));

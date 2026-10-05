@@ -32,7 +32,6 @@ title: "Agent schema history"
 | 22      | Exact transcript FTS row ownership for session-local deletion and reconciliation ([#153834](https://github.com/openclaw/openclaw/pull/153834))                                                                                                         | Unreleased                                        |
 | 23      | Selective transcript compression, binary memory embeddings, and stable memory full-text index identities                                                                                                                                               | Unreleased                                        |
 | 24      | Canonical session hot facts separated from keyed diff, skills, and system-prompt snapshots                                                                                                                                                             | Unreleased                                        |
-| 25      | Immutable `plugin-dock` session creation surface, with human creator authority preserved                                                                                                                                                               | Unreleased                                        |
 
 Version 3 was an unshipped development step folded into version 4.
 
@@ -48,26 +47,6 @@ including shared agent registration. Run `openclaw doctor --fix` with OpenClaw
 be verified, follow the explicit agent-restoration instructions it reports, then
 rerun Doctor before upgrading the copy. Schema-8 and later session migrations
 remain supported.
-
-### Dock conversation creation surface
-
-Agent schema **25** adds `plugin-dock` to the existing `session_nodes.created_via`
-constraint. The immutable creation stamp remains canonical in `entry_json`; the
-column remains its query projection. Creator attribution, sharing, sandboxing,
-transcript bytes, retention, and deletion behavior are unchanged. Existing Board
-agent conversations are not relabeled or restamped.
-
-The existing stopped-writer schema migration rebuilds only `session_nodes`,
-preserving row identities, accepted additive columns, snapshots, transcript
-windows, sharing rows, indexes, and triggers. Both schema markers and the rebuild
-commit together after foreign-key validation. Initial migration needs temporary
-disk and I/O proportional to the node table and its indexes; transcript tables
-are not rewritten. Interrupted migration rolls back.
-
-Use a verified pre-upgrade backup and the candidate Doctor update flow described
-in [schema bumps and older updaters](/reference/database-schemas/versioning#schema-bumps-and-older-updaters).
-Older builds reject schema 25. Rollback requires the matching pre-upgrade backup
-and build; lowering the version markers does not restore the old constraint.
 
 ### Session hot facts and snapshots
 
