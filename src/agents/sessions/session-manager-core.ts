@@ -46,6 +46,7 @@ import type {
   SessionManagerBoundedContextLimits,
   PreparedSessionTranscriptReload,
   SessionManagerBoundedContext,
+  SessionManagerBoundedView,
 } from "./session-manager-view-types.js";
 import { warnSessionPersistenceDeprecation } from "./session-persistence-deprecation.js";
 
@@ -218,15 +219,7 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
   protected setLoadedSessionTarget(
     target: SessionManagerPersistenceTarget | undefined,
     entries: readonly unknown[],
-    bounded?: Pick<
-      SessionTranscriptBoundedActiveContext,
-      | "activeLeafEntryId"
-      | "version"
-      | "opaqueParents"
-      | "parents"
-      | "firstKeptRanges"
-      | "cacheTtlProjectionPrefixes"
-    >,
+    bounded?: SessionManagerBoundedView,
     version?: SessionTranscriptContextVersion,
   ): void {
     this.assertTranscriptViewAvailable();
@@ -276,11 +269,7 @@ export class SessionManagerCore extends SessionEntryNavigation<SessionEntry> {
         }
         this.boundedFirstKeptById.set(boundaryId, firstKeptEntryId);
       }
-      this.cacheTtlProjectionPrefixes = bindCacheTtlProjectionPrefixes(
-        bounded,
-        this.getBranch(),
-        this.byId,
-      );
+      this.cacheTtlProjectionPrefixes = bindCacheTtlProjectionPrefixes(bounded, this);
     }
   }
 
