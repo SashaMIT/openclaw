@@ -51,7 +51,8 @@ export async function withOrderedSessionEntriesInWorker<T>(
     return runOpenClawAgentWriteAdmissions(
       selected.map(({ database }) => database),
       async () => {
-        const nativeWitnesses = selected.map(({ database }) => {
+        // Synchronous SDK writers bypass the FIFO and may not publish row changes.
+        const nativeSources = selected.map(({ database }) => {
           const native = getOpenClawAgentDatabaseIfOpen(database);
           return {
             database,
@@ -106,8 +107,7 @@ export async function withOrderedSessionEntriesInWorker<T>(
           for (const read of selected) {
             read.assertCurrent();
           }
-          // Synchronous SDK writers bypass the FIFO and may not publish row changes.
-          for (const { database, native, revision } of nativeWitnesses) {
+          for (const { database, native, revision } of nativeSources) {
             if (
               getOpenClawAgentDatabaseIfOpen(database) !== native ||
               (native &&
