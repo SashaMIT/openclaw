@@ -70,7 +70,7 @@ import type {
   SessionHistoryWorkerDatabase,
   SessionEntryListWorkerInput,
 } from "./session-transcript-worker.types.js";
-import type { SessionEntry } from "./types.js";
+import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
 export function captureSessionEntryReadScope(input: SessionEntryReadScope) {
   const env = cloneEnvWithPlatformSemantics(input.env ?? process.env);

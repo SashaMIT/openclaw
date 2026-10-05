@@ -51,8 +51,8 @@ export async function withOrderedSessionEntriesInWorker<T>(
     return runOpenClawAgentWriteAdmissions(
       selected.map(({ database }) => database),
       async () => {
-        // Synchronous SDK writers cannot join FIFO; retain their unpublished mutation witness.
-        const nativeReads = selected.map(({ database }) => {
+        // Synchronous SDK writers bypass the FIFO and may not publish row changes.
+        const nativeSources = selected.map(({ database }) => {
           const native = getOpenClawAgentDatabaseIfOpen(database);
           return {
             database,
@@ -107,18 +107,18 @@ export async function withOrderedSessionEntriesInWorker<T>(
           for (const read of selected) {
             read.assertCurrent();
           }
-          if (
-            changed ||
-            nativeReads.some(
-              ({ database, native, revision }) =>
-                getOpenClawAgentDatabaseIfOpen(database) !== native ||
-                (native &&
-                  (!native.db.isOpen ||
-                    native.db.isTransaction ||
-                    revision === undefined ||
-                    readSqliteNativeMutationRevision(native.db) !== revision)),
-            )
-          ) {
+          for (const { database, native, revision } of nativeSources) {
+            if (
+              getOpenClawAgentDatabaseIfOpen(database) !== native ||
+              (native &&
+                (native.db.isTransaction ||
+                  revision === undefined ||
+                  readSqliteNativeMutationRevision(native.db) !== revision))
+            ) {
+              throw new Error("Session entry changed during read");
+            }
+          }
+          if (changed) {
             throw new Error("Session entry changed during read");
           }
         };
