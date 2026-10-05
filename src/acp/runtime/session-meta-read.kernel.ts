@@ -3,7 +3,11 @@ import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/s
 import { sql } from "kysely";
 import { executeSqliteQuerySync } from "../../infra/kysely-sync.js";
 import { isIncognitoSessionKey, normalizeAgentId } from "../../routing/session-key.js";
+import type { OpenClawStateReadCommand } from "../../state/openclaw-state-read.types.js";
 import {
+  acpSessionRowMatchesEntry,
+  selectAcpSessionRows,
+  selectAcpSessionRowsByKeys,
   buildAcpDatabaseSessionKey,
   getAcpSessionKysely,
   parseAcpDatabaseSessionKey,
@@ -15,7 +19,7 @@ export type AcpResumeSessionRow = {
   updated_at: number;
 };
 
-export function selectAcpResumeSessions(
+function selectAcpResumeSessions(
   db: DatabaseSync,
   input: { agentId: string; backendId?: string; resumeSessionId: string; sessionKey?: string },
 ): AcpResumeSessionRow[] {
@@ -68,4 +72,34 @@ export function selectAcpResumeSessions(
         : [];
     })
     .sort((a, b) => Buffer.compare(Buffer.from(a.sessionKey), Buffer.from(b.sessionKey)));
+}
+
+export function readAcpSessionCommand(
+  db: DatabaseSync,
+  command: Extract<
+    OpenClawStateReadCommand,
+    {
+      type: "acpSessions.list" | "acpSessions.metadata" | "acpSessions.resume";
+    }
+  >,
+) {
+  if (command.type === "acpSessions.list") {
+    return { type: command.type, rows: selectAcpSessionRows(db) };
+  }
+  if (command.type === "acpSessions.resume") {
+    return { type: command.type, rows: selectAcpResumeSessions(db, command) };
+  }
+  const cohortKeys = [...new Set(command.entries.flatMap((entry) => entry.keys))];
+  const rows = new Map(
+    [...selectAcpSessionRowsByKeys(db, cohortKeys)].map((row) => [row.session_key, row]),
+  );
+  return {
+    type: command.type,
+    rows: command.entries.map(
+      ({ keys, entry }) =>
+        keys
+          .map((key) => rows.get(key))
+          .find((row) => row && (!entry || acpSessionRowMatchesEntry(row, entry))) ?? null,
+    ),
+  };
 }

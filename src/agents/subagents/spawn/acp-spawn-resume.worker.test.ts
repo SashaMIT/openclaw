@@ -65,7 +65,7 @@ it("resolves resume ownership off-thread, preserving backend, order, and lifecyc
         env: state.env,
         now: () => options.updatedAt ?? 100,
       });
-      return { sessionKey, meta };
+      return { sessionKey, meta, entry };
     };
     const owned = await seed("owned");
     await seed("parent", { owner: "agent:other:main", parent: requester });
@@ -137,6 +137,34 @@ it("resolves resume ownership off-thread, preserving backend, order, and lifecyc
     }
 
     const read = entryReader.withSessionEntryReadOnlyInWorker;
+    const changedIdentity = vi
+      .spyOn(entryReader, "withSessionEntryReadOnlyInWorker")
+      .mockImplementationOnce((scope, assertCurrent, consume) =>
+        read(scope, assertCurrent, async (snapshot, owner) => {
+          writeAcpSessionMetaForMigration({
+            sessionKey: buildAcpDatabaseSessionKey(owned.sessionKey, "coder"),
+            lifecycleRevision: owned.entry?.lifecycleRevision,
+            meta: {
+              ...owned.meta,
+              identity: {
+                state: "resolved",
+                source: "ensure",
+                lastUpdatedAt: 200,
+                agentSessionId: "replacement",
+              },
+            },
+            env: state.env,
+          });
+          return consume(snapshot, owner);
+        }),
+      );
+    try {
+      expect(
+        (await validateAcpResumeSessionOwnership({ ...input, resumeSessionId: "owned" })).ok,
+      ).toBe(false);
+    } finally {
+      changedIdentity.mockRestore();
+    }
     let active = true;
     const intercept = vi
       .spyOn(entryReader, "withSessionEntryReadOnlyInWorker")
@@ -148,7 +176,7 @@ it("resolves resume ownership off-thread, preserving backend, order, and lifecyc
       await expect(
         validateAcpResumeSessionOwnership({
           ...input,
-          resumeSessionId: "owned",
+          resumeSessionId: "replacement",
           assertCurrent() {
             if (!active) throw new Error("request retired");
           },

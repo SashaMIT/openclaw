@@ -6,7 +6,7 @@ import { OPENCLAW_STATE_SCHEMA_SQL } from "../../state/openclaw-state-schema.js"
 import { closeStateDatabaseForTest } from "../../test-utils/database-cleanup.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { buildAcpDatabaseSessionKey, upsertAcpSessionMetaRow } from "./session-meta-keys.js";
-import { selectAcpResumeSessions } from "./session-meta-resume.kernel.js";
+import { readAcpSessionCommand } from "./session-meta-read.kernel.js";
 import { bindAcpSessionMeta } from "./session-meta-write.kernel.js";
 
 it("matches randomized identities using index searches, including malformed and non-string identities", () => {
@@ -78,7 +78,12 @@ it("matches randomized identities using index searches, including malformed and 
           })
           .map(({ sessionKey }) => ({ sessionKey, session_id: "revision", updated_at: 100 }));
         expect(
-          selectAcpResumeSessions(db, { agentId: "coder", backendId: "fixture", resumeSessionId }),
+          readAcpSessionCommand(db, {
+            type: "acpSessions.resume",
+            agentId: "coder",
+            backendId: "fixture",
+            resumeSessionId,
+          }).rows,
         ).toEqual(expected);
       }
     } finally {
@@ -141,7 +146,11 @@ it("adds resume indexes to populated same-version state without changing canonic
         .all(),
     ).toHaveLength(2);
     expect(
-      selectAcpResumeSessions(reopened.db, { agentId: "coder", resumeSessionId: "resume" }),
+      readAcpSessionCommand(reopened.db, {
+        type: "acpSessions.resume",
+        agentId: "coder",
+        resumeSessionId: "resume",
+      }).rows,
     ).toEqual([
       { sessionKey: "agent:coder:acp:existing", session_id: "revision", updated_at: 100 },
     ]);

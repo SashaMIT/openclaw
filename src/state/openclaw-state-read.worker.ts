@@ -1,10 +1,5 @@
 import { toStringifiedError } from "@openclaw/normalization-core/error-coercion";
-import {
-  acpSessionRowMatchesEntry,
-  selectAcpSessionRows,
-  selectAcpSessionRowsByKeys,
-} from "../acp/runtime/session-meta-keys.js";
-import { selectAcpResumeSessions } from "../acp/runtime/session-meta-resume.kernel.js";
+import { readAcpSessionCommand } from "../acp/runtime/session-meta-read.kernel.js";
 import {
   loadSubagentMaintenanceRunsInDatabase,
   loadVersionedSubagentRunsInDatabase,
@@ -260,33 +255,12 @@ serveOwnedWorkerTasks(
                 entries: readOutboundDeliveriesInDatabase({ db }, command),
               };
             }
-            if (command.type === "acpSessions.resume") {
-              return { type: command.type, rows: selectAcpResumeSessions(db, command) };
-            }
-            if (command.type === "acpSessions.list") {
-              return {
-                type: command.type,
-                rows: selectAcpSessionRows(db),
-              };
-            }
-            if (command.type === "acpSessions.metadata") {
-              const cohortKeys = [...new Set(command.entries.flatMap((entry) => entry.keys))];
-              const rows = new Map(
-                [...selectAcpSessionRowsByKeys(db, cohortKeys)].map((row) => [
-                  row.session_key,
-                  row,
-                ]),
-              );
-              return {
-                type: command.type,
-                rows: command.entries.map(
-                  ({ keys, entry }) =>
-                    keys
-                      .map((key) => rows.get(key))
-                      .find((row) => row && (!entry || acpSessionRowMatchesEntry(row, entry))) ??
-                    null,
-                ),
-              };
+            if (
+              command.type === "acpSessions.resume" ||
+              command.type === "acpSessions.list" ||
+              command.type === "acpSessions.metadata"
+            ) {
+              return readAcpSessionCommand(db, command);
             }
             if (isChannelIngressReadCommand(command)) {
               return readChannelIngressInDatabase(db, command);
