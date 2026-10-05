@@ -614,6 +614,12 @@ other stores continue recovery. `openclaw status` and `openclaw doctor` show
 outstanding startup recovery failures from the running Gateway; the warning clears
 when the store scan succeeds.
 
+If an agent database is still undergoing background startup inspection and
+preparation, recovery scans it once admission finishes. Healthy agents recover
+without waiting for slower databases, and waiting for admission does not consume
+the recovery retry budget. Top-level dashboard sessions follow this same recovery
+path. A database that fails admission remains unavailable with its repair guidance.
+
 A restart abort preserves the interrupted turn's recovery claim even when command
 cleanup finishes before shutdown marking. On upgrade, startup also repairs an
 internal chat turn left running and aborted with a dead writer, a missing claim,

@@ -7,6 +7,7 @@ import {
 } from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
 import { runWithGatewayIndependentRootWorkAdmission } from "../../process/gateway-work-admission.js";
+import { getAgentDatabaseStartupAdmission } from "../../state/agent-database-startup.js";
 import { runWithMainSessionRecoveryAdmission } from "./main-session-recovery-admission.js";
 import { createMainSessionRecoveryCapacity } from "./main-session-recovery-capacity.js";
 import { getMainSessionRecoveryRetryCount } from "./main-session-recovery-state.js";
@@ -258,6 +259,7 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
   const handledSessionKeys = new Set<string>();
   const lifecycleGeneration = getAgentEventLifecycleGeneration();
   const abortController = new AbortController();
+  const stopped = waitForAbortSignal(abortController.signal);
   const shouldContinue = () =>
     !abortController.signal.aborted &&
     params.shouldContinue?.() !== false &&
@@ -267,6 +269,7 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
     limit: STARTUP_RECOVERY_MAX_ACTIVE_RUNS,
   });
   const startupCheckedStorePaths = params.startupCheckedStorePaths ?? new Set<string>();
+  const databaseAdmission = getAgentDatabaseStartupAdmission();
   const runRecoveryAttempt = async (
     exhaustedTargets: Map<string, ExhaustedRestartRecoveryTarget>,
   ): Promise<RecoveryCounts> => {
@@ -345,33 +348,41 @@ export function scheduleRestartAbortedMainSessionRecovery(params: {
   let exhaustedTargets = new Map<string, ExhaustedRestartRecoveryTarget>();
   const run = Promise.resolve().then(async () => {
     if (params.waitForStart) {
-      await Promise.race([params.waitForStart(), waitForAbortSignal(abortController.signal)]);
+      await Promise.race([params.waitForStart(), stopped]);
     }
-    await runRecoveryRetries({
-      initialDelayMs: params.delayMs ?? DEFAULT_RECOVERY_DELAY_MS,
-      maxRetries: Math.max(1, params.maxRetries ?? MAX_RECOVERY_RETRIES),
-      shouldContinue,
-      signal: abortController.signal,
-      attempt: async (finalAttempt) => {
-        exhaustedTargets = new Map();
-        const result = await runRecoveryAttempt(exhaustedTargets);
-        if (result.failed === 0) {
-          return true;
-        }
-        if (finalAttempt && exhaustedTargets.size > 0) {
-          await reconcileExhaustedTargets(exhaustedTargets.values());
-        }
-        return false;
-      },
-      onError: async (err, finalAttempt) => {
-        if (finalAttempt) {
-          mainSessionRecoveryLog.warn(`main-session restart recovery gave up: ${String(err)}`);
-          await reconcileExhaustedTargets(exhaustedTargets.values());
-        } else {
-          mainSessionRecoveryLog.warn(`main-session restart recovery failed: ${String(err)}`);
-        }
-      },
-    });
+    do {
+      // Capture before discovery: admission can finish while a refused store is skipped.
+      const preparation = databaseAdmission?.waitForNextPreparation();
+      await runRecoveryRetries({
+        initialDelayMs: params.delayMs ?? DEFAULT_RECOVERY_DELAY_MS,
+        maxRetries: Math.max(1, params.maxRetries ?? MAX_RECOVERY_RETRIES),
+        shouldContinue,
+        signal: abortController.signal,
+        attempt: async (finalAttempt) => {
+          exhaustedTargets = new Map();
+          const result = await runRecoveryAttempt(exhaustedTargets);
+          if (result.failed === 0) {
+            return true;
+          }
+          if (finalAttempt && exhaustedTargets.size > 0) {
+            await reconcileExhaustedTargets(exhaustedTargets.values());
+          }
+          return false;
+        },
+        onError: async (err, finalAttempt) => {
+          if (finalAttempt) {
+            mainSessionRecoveryLog.warn(`main-session restart recovery gave up: ${String(err)}`);
+            await reconcileExhaustedTargets(exhaustedTargets.values());
+          } else {
+            mainSessionRecoveryLog.warn(`main-session restart recovery failed: ${String(err)}`);
+          }
+        },
+      });
+      if (!preparation) {
+        break;
+      }
+      await Promise.race([preparation, stopped]);
+    } while (shouldContinue());
   });
   return {
     stop: async () => {

@@ -10,6 +10,7 @@ import {
   replaceSessionEntry,
 } from "../../config/sessions/session-accessor.js";
 import { callGateway } from "../../gateway/call.js";
+import { persistGatewaySessionLifecycleEvent } from "../../gateway/session-lifecycle-state.js";
 import { resetAgentEventsForTest } from "../../infra/agent-events.js";
 import * as gatewayWorkAdmission from "../../process/gateway-work-admission.js";
 import {
@@ -22,7 +23,15 @@ import {
   interruptSessionWorkAdmissions,
   runExclusiveSessionLifecycleMutation,
 } from "../../sessions/session-lifecycle-admission.js";
+import { sessionChanges } from "../../sessions/session-row-changes.js";
+import {
+  readAgentDatabaseAdmissionRefusal,
+  recordAgentDatabaseAdmissions,
+} from "../../state/agent-database-admission.js";
+import { withAgentDatabaseStartupAdmission } from "../../state/agent-database-startup.js";
+import { openOpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import { withEnvAsync } from "../../test-utils/env.js";
+import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { cleanupSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
 import { waitForFast } from "../subagent-test-fixtures.test-helpers.js";
 import { MAIN_SESSION_RECOVERY_WORK_ADMISSION_OWNER } from "./main-session-recovery-admission.js";
@@ -123,6 +132,148 @@ describe("startup recovery admission", () => {
       );
     }
   }
+
+  it.each(["resume", "stop"] as const)(
+    "recovers dashboard crash orphans after admission and %s remaining recovery",
+    async (action) => {
+      await withOpenClawTestState({ label: "recovery-deferred-admission" }, async (state) => {
+        const cfg = {
+          agents: { ownership: "explicit" as const, entries: { main: {}, worker: {} } },
+        };
+        const targets = ["main", "worker"].map((agentId) => ({
+          agentId,
+          sessionKey: `agent:${agentId}:dashboard:crashed`,
+          sessionId: `${agentId}-crashed`,
+          storePath: path.join(state.sessionsDir(agentId), "sessions.json"),
+        }));
+        for (const target of targets) {
+          await replaceSessionEntry(target, { sessionId: target.sessionId, updatedAt: 1 });
+          await persistGatewaySessionLifecycleEvent({
+            ...target,
+            event: {
+              ts: 1,
+              sessionId: target.sessionId,
+              runId: `${target.agentId}-dead-writer`,
+              data: { phase: "start", startedAt: 1 },
+            },
+          });
+          await appendTranscriptMessage(target, {
+            message: { role: "user", content: "Continue the interrupted task" },
+            cwd: state.workspaceDir,
+          });
+        }
+        await withAgentDatabaseStartupAdmission(async (admission) => {
+          const inspections = targets.map(() =>
+            createDeferred<{ incompatible: []; indeterminate: [] }>(),
+          );
+          const refusals = admission.defer({
+            env: state.env,
+            reason: "dead writer requires background inspection",
+            inspections: targets.map((target, index) => ({
+              target: {
+                agentId: target.agentId,
+                path: openOpenClawAgentDatabase({ agentId: target.agentId }).path,
+              },
+              result: inspections[index]!.promise,
+            })),
+          });
+          recordAgentDatabaseAdmissions(refusals, { env: state.env, source: "startup" });
+          const owner = admission.adopt();
+          admission.activate({
+            isCurrent: () => true,
+            preparationReady: Promise.resolve(),
+            openAgent: async () => {},
+            migrateAgent: async () => {},
+            publishAgent: async () => {},
+          });
+          const admitted = targets.map(() => createDeferred());
+          const unsubscribe = sessionChanges.subscribe((change) => {
+            if ("all" in change && change.scope?.topology) {
+              const index = targets.findIndex((target) => target.agentId === change.scope?.agentId);
+              admitted[index]?.resolve();
+            }
+          });
+          const scans = targets.map(() => createDeferred());
+          scans.push(createDeferred());
+          let scanIndex = 0;
+          const admit = gatewayWorkAdmission.runWithGatewayIndependentRootWorkAdmission;
+          const admissionSpy = vi
+            .spyOn(gatewayWorkAdmission, "runWithGatewayIndependentRootWorkAdmission")
+            .mockImplementation(
+              async <T>(run: () => Promise<T>, origin?: string, signal?: AbortSignal) => {
+                try {
+                  return await admit(run, origin, signal);
+                } finally {
+                  if (origin === "main-session:startup-recovery") {
+                    scans[scanIndex]?.resolve();
+                    scanIndex += 1;
+                  }
+                }
+              },
+            );
+          const getConfig = vi.fn(() => cfg);
+          const startupCheckedStorePaths = new Set<string>();
+          const recovery = scheduleRestartAbortedMainSessionRecovery({
+            getConfig,
+            delayMs: 0,
+            maxRetries: 1,
+            stateDir: state.stateDir,
+            startupCheckedStorePaths,
+            gatewayRuntime,
+          });
+          try {
+            await scans[0]!.promise;
+            expect(callGateway).not.toHaveBeenCalled();
+            expect(startupCheckedStorePaths.size).toBe(0);
+            vi.useFakeTimers();
+            await vi.advanceTimersByTimeAsync(60_000);
+            expect(getConfig).toHaveBeenCalledOnce();
+            inspections[0]!.resolve({ incompatible: [], indeterminate: [] });
+            await admitted[0]!.promise;
+            await vi.advanceTimersByTimeAsync(0);
+            expect(getConfig).toHaveBeenCalledTimes(2);
+            vi.useRealTimers();
+            expect(readAgentDatabaseAdmissionRefusal("worker", { env: state.env })?.code).toBe(
+              "agent-database-inspection-pending",
+            );
+            await scans[1]!.promise;
+            expect(callGateway).toHaveBeenCalledOnce();
+            expect(loadSessionEntry(targets[0]!)?.abortedLastRun).toBe(false);
+            expect(gatewayParams()).toMatchObject({ sessionKey: targets[0]!.sessionKey });
+            expect(startupCheckedStorePaths.size).toBe(1);
+            dispatchSettlement.resolve();
+            if (action === "stop") {
+              await recovery.stop();
+            }
+            inspections[1]!.resolve({ incompatible: [], indeterminate: [] });
+            await admitted[1]!.promise;
+            if (action === "resume") {
+              await scans[2]!.promise;
+              expect(callGateway).toHaveBeenCalledTimes(2);
+              expect(loadSessionEntry(targets[1]!)?.abortedLastRun).toBe(false);
+              expect(startupCheckedStorePaths.size).toBe(2);
+            } else {
+              expect(callGateway).toHaveBeenCalledOnce();
+              expect(loadSessionEntry(targets[1]!)).toMatchObject({
+                status: "running",
+                abortedLastRun: false,
+              });
+              expect(startupCheckedStorePaths.size).toBe(1);
+            }
+          } finally {
+            vi.useRealTimers();
+            await recovery.stop();
+            inspections.forEach((inspection) =>
+              inspection.resolve({ incompatible: [], indeterminate: [] }),
+            );
+            await owner.stop();
+            unsubscribe();
+            admissionSpy.mockRestore();
+          }
+        });
+      });
+    },
+  );
 
   it("skips a recovery target replaced while its admission waits", async () => {
     const { storePath, sessionKey } = await makeMainSessionFixture();

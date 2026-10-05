@@ -67,6 +67,7 @@ type PreparationPhase =
   | "publication";
 type PendingRecovery = {
   refusal: AgentDatabaseAdmissionRefusal;
+  settled: Promise<void>;
   startedAt: number;
   phase: PreparationPhase;
   phaseStartedAt: number;
@@ -236,6 +237,12 @@ class AgentDatabaseStartupAdmission {
     );
   }
 
+  waitForNextPreparation(): Promise<void> | undefined {
+    return this.pending.size > 0
+      ? Promise.race([...this.pending.values()].map((recovery) => recovery.settled))
+      : undefined;
+  }
+
   scheduling(
     env: NodeJS.ProcessEnv,
     runtimePaths: readonly string[],
@@ -323,8 +330,10 @@ class AgentDatabaseStartupAdmission {
         reason: `Agent ${agentId} has not completed startup inspection and preparation. ${params.reason}`,
       });
       const startedAt = performance.now();
+      const publicationComplete = createDeferredCore();
       const recovery: PendingRecovery = {
         refusal,
+        settled: publicationComplete.promise,
         startedAt,
         phase: "inspection",
         phaseStartedAt: startedAt,
@@ -352,7 +361,6 @@ class AgentDatabaseStartupAdmission {
       const checked = Promise.allSettled(inspections.map(({ result }) => result));
       // Gateway-owned recovery outlives the caller's temporary discovery snapshot.
       const work = runInDetachedAsyncContext(async () => {
-        const publicationComplete = createDeferredCore();
         try {
           const results = await checked;
           phase("activation");
