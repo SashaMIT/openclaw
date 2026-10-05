@@ -34,6 +34,13 @@ capture, worker accounting, the live-pool registry, and shared compute capacity.
 The package controls when those operations run and holds admission until their
 required settlement receipts arrive.
 
+Each synchronous pool or rotation pass captures its native workers and asks the
+host to service them. OpenClaw's host binds a pool to one native source, so one
+service call advances that shared source. Nested calls capture a fresh pass;
+individual stop and resource operations retain their own servicing. Reference
+changes still check current transport availability and refresh native liveness,
+while repeated `ref()` or `unref()` calls avoid redundant control messages.
+
 Worker creation returns a `WorkerLifecycle` and, when needed, its
 `RetainedNativeWorker`. The native owner keeps runtime-generation and resource
 custody. Worker-side `WorkerTaskServerHost` installs the captured context and

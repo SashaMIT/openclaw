@@ -11,7 +11,8 @@ import {
   DEFAULT_WORKER_PENDING_TASKS,
   type WorkerComputeCapacity,
 } from "./worker-task-capacity.js";
-import type { WorkerTaskHost } from "./worker-task-host.js";
+import { captureWorkerTaskContext } from "./worker-task-context.js";
+import { serviceNativeWorkerPass, type WorkerTaskHost } from "./worker-task-host.js";
 import { createWorkerNativeSectionState } from "./worker-task-native-sections.js";
 import { createWorkerTaskPoolBootstrap } from "./worker-task-pool-bootstrap.js";
 import {
@@ -147,6 +148,7 @@ export class WorkerTaskPoolCore<Input, Output> {
       onRotationComplete: this.bootstrap.reset,
       serviceDeadlines: this.expireTasks,
       markWorkerRetirement: (worker, reason) => host.workerRetiring(worker, reason),
+      serviceHost: host,
     });
     host.pools.register(this);
   }
@@ -190,10 +192,7 @@ export class WorkerTaskPoolCore<Input, Output> {
 
   private service(): void {
     // Servicing can dispatch successors; visit only the owners present at entry.
-    const slots = [...this.slots];
-    for (const slot of slots) {
-      slot.native?.service();
-    }
+    serviceNativeWorkerPass(this.host, this.slots);
     this.expireTasks();
     this.retirement.service();
     const tasks = [...this.ownedTasks];
@@ -219,7 +218,7 @@ export class WorkerTaskPoolCore<Input, Output> {
       reject: completion.reject,
       read: () => completion.operation.read(),
       id: ++this.nextTaskId,
-      runInContext: AsyncLocalStorage.snapshot(),
+      runInContext: captureWorkerTaskContext(),
       controller: undefined,
       inputConsumed: false,
       executionNotified: false,

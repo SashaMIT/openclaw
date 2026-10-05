@@ -20,6 +20,8 @@ import { withSessionHistoryWorkerDatabase } from "./session-transcript-worker-ru
 
 export type SessionTranscriptReconcileParams = OpenClawAgentDatabaseOptions & {
   preferredSessionId?: string;
+  assertCurrent?: () => void;
+  signal?: AbortSignal;
 };
 
 export type PreparedReconcileParams = SessionTranscriptReconcileParams & {

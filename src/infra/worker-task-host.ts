@@ -46,6 +46,10 @@ export function createWorkerTaskHost(owner: WorkerTaskPoolOwnerOptions = {}): Wo
       }
       return { worker: createCpuTrackedWorker(url, workerOptions) };
     },
+    serviceNativeWorkers(workers) {
+      // This factory binds every native worker in the pool to the same captured source.
+      workers[0]?.service();
+    },
     prepareResources,
     async releaseTemporaryDirectory(directory) {
       const { removeTemporaryArtifacts } = await prepareResources();

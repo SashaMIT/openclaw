@@ -1,16 +1,14 @@
 import type { SqliteReadOnlyOperationContext } from "../infra/sqlite-readonly-operation-types.js";
 import { OpenClawAgentDatabaseReadOnlyScope } from "../state/openclaw-agent-db-readonly-scope.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../state/openclaw-agent-db-readonly.js";
-import {
-  prepareTrajectoryRuntimeRetention,
-  type TrajectoryRuntimeRetentionInput,
-} from "./runtime-retention.sqlite.js";
+import type { TrajectoryRuntimeRetentionReadOperations } from "./runtime-retention.contract.js";
+import { prepareTrajectoryRuntimeRetention } from "./runtime-retention.sqlite.js";
 
 export const trajectoryRuntimeRetentionReadOperations = {
   "trajectoryRetention.read": (
-    input: TrajectoryRuntimeRetentionInput & { agentId: string; now: number },
+    input: TrajectoryRuntimeRetentionReadOperations["trajectoryRetention.read"]["input"],
     context: SqliteReadOnlyOperationContext,
-  ) => {
+  ): TrajectoryRuntimeRetentionReadOperations["trajectoryRetention.read"]["output"] => {
     const scope = new OpenClawAgentDatabaseReadOnlyScope();
     const options = { ...context, agentId: input.agentId };
     try {

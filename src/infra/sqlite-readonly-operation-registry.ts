@@ -3,15 +3,14 @@ import {
   createWorkerOperationRegistry,
   type WorkerOperations,
 } from "../state/worker-operation-registry.js";
-import type { trajectoryRuntimeRetentionReadOperations } from "../trajectory/runtime-retention.worker.js";
+import type { TrajectoryRuntimeRetentionReadOperations } from "../trajectory/runtime-retention.contract.js";
 import type { immutableInstallReadOperations } from "./package-update-activation-immutable.js";
 import type { SqliteReadOnlyOperationContext } from "./sqlite-readonly-operation-types.js";
 
 export type SqliteReadOnlyOperations = WorkerOperations<
-  ReturnType<typeof createPluginModelCatalogReadOperations> &
-    typeof immutableInstallReadOperations &
-    typeof trajectoryRuntimeRetentionReadOperations
->;
+  ReturnType<typeof createPluginModelCatalogReadOperations> & typeof immutableInstallReadOperations
+> &
+  TrajectoryRuntimeRetentionReadOperations;
 
 export const sqliteReadOnlyOperations = createWorkerOperationRegistry<
   SqliteReadOnlyOperations,

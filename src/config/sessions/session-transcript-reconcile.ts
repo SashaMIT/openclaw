@@ -1,5 +1,5 @@
-// Transcript projection reconciliation owner. Gateway startup awaits it;
-// Request paths schedule it and may wait boundedly for their session's projection.
+// Transcript projection reconciliation owner. Startup maintenance runs after ready;
+// request paths may wait boundedly for their session's projection.
 // Native timers keep accepted work runnable after a caller replaces its timer globals.
 import { randomUUID } from "node:crypto";
 import { setImmediate as yieldToGateway, setTimeout as delay } from "node:timers/promises";
@@ -17,8 +17,6 @@ import { runOutsideAsyncWorkScope } from "../../shared/async-work-scope.js";
 import { withOpenClawAgentDatabaseReadOnly } from "../../state/openclaw-agent-db-readonly.js";
 import {
   borrowOpenClawAgentDatabase,
-  getOpenClawAgentDatabaseIfOpen,
-  isIncognitoOpenClawAgentDatabase,
   isIncognitoOpenClawAgentSqlitePath,
   resolveOpenClawAgentSqlitePath,
   type OpenClawAgentDatabaseOptions,
@@ -60,7 +58,7 @@ import {
   type ProjectionPublisher,
   type ReconcileDatabaseOptions,
 } from "./session-transcript-projection-writer.js";
-import { createMemoryTranscriptProjectionSource } from "./session-transcript-reconcile-memory.js";
+import { captureMemoryTranscriptProjectionSource } from "./session-transcript-reconcile-memory.js";
 import {
   finishSessionTranscriptReconcileTask,
   isSessionTranscriptReconcileGenerationCurrent,
@@ -74,7 +72,6 @@ import {
   type SessionTranscriptReconcileParams,
 } from "./session-transcript-reconcile-readiness.js";
 import type {
-  EncodedTranscriptFtsChunk,
   SessionTranscriptReconcileWorkerInput,
   SessionTranscriptReconcileWorkerMessage,
 } from "./session-transcript-reconcile.worker.js";
@@ -114,25 +111,6 @@ function reconcileKey(
     : path;
 }
 
-function captureMemorySource(params: OpenClawAgentDatabaseOptions) {
-  const database = getOpenClawAgentDatabaseIfOpen(params);
-  return database && isIncognitoOpenClawAgentDatabase(database)
-    ? createMemoryTranscriptProjectionSource(database, { ...params, path: database.path })
-    : undefined;
-}
-
-function decodeFtsChunk(chunk: EncodedTranscriptFtsChunk) {
-  const decoder = new TextDecoder();
-  return chunk.rows.map((row) => ({
-    messageId: row.messageId,
-    role: row.role,
-    text: decoder.decode(
-      chunk.textBytes.subarray(row.textByteOffset, row.textByteOffset + row.textByteLength),
-    ),
-    timestamp: row.timestamp,
-  }));
-}
-
 /** Prepares full trees off-thread, then commits bounded chunks through the runtime writer owner. */
 export async function reconcileSessionTranscriptIndexes(
   params: SessionTranscriptReconcileParams,
@@ -146,6 +124,7 @@ export async function reconcileSessionTranscriptIndexes(
       incognito || isIncognitoOpenClawAgentSqlitePath(reconcileKey(prepared), prepared)
         ? undefined
         : { agentId: prepared.agentId, path: reconcileKey(prepared) },
+      prepared.signal,
     );
   const binding = prepared.incognito;
   return binding
@@ -185,11 +164,16 @@ async function reconcilePreparedTranscriptIndexesPass(
   actorSource?: IncognitoProjectionSource,
 ): Promise<ReconcilePassResult> {
   operation.signal.throwIfAborted();
+  params.assertCurrent?.();
   const databasePath = resolveOpenClawAgentSqlitePath(params);
   const databaseOptions: ReconcileDatabaseOptions = {
     agentId: params.agentId,
     env: params.env,
     path: databasePath,
+    assertCurrent: () => {
+      operation.signal.throwIfAborted();
+      params.assertCurrent?.();
+    },
   };
   const execution =
     heldExecution ??
@@ -201,7 +185,9 @@ async function reconcilePreparedTranscriptIndexesPass(
     | undefined;
   let publication: ProjectionPublisher | undefined;
   let releaseDatabase: (() => void) | undefined;
-  const memorySource = actorSource ? undefined : captureMemorySource(databaseOptions);
+  const memorySource = actorSource
+    ? undefined
+    : captureMemoryTranscriptProjectionSource(databaseOptions);
   let memorySessionIds: string[] = [];
   let backlog = 0;
   try {
@@ -216,6 +202,7 @@ async function reconcilePreparedTranscriptIndexesPass(
       const pending = await runExclusiveSqliteSessionWrite(
         databaseOptions,
         async () => {
+          databaseOptions.assertCurrent?.();
           execution.assertCurrent();
           return await withSessionHistoryWorkerDatabase(databaseOptions, (owner) =>
             owner.readProjectionStatus({ env: params.env }, operation.signal),
@@ -224,6 +211,7 @@ async function reconcilePreparedTranscriptIndexesPass(
         "sessions.transcript-index.preflight",
       );
       execution.assertCurrent();
+      databaseOptions.assertCurrent?.();
       if (!pending) {
         return { reconciledSessions: 0, yielded: false };
       }
@@ -242,10 +230,14 @@ async function reconcilePreparedTranscriptIndexesPass(
       publicationClient = client;
       publication = {
         execute: (command) =>
-          client.execute(command, () => {
-            operation.signal.throwIfAborted();
-            execution.assertCurrent();
-          }),
+          client.execute(
+            command,
+            () => {
+              databaseOptions.assertCurrent?.();
+              execution.assertCurrent();
+            },
+            { signal: operation.signal },
+          ),
       };
       backlog = await publication.execute({ type: "preflight", input: undefined });
       if (!backlog) {
@@ -256,6 +248,7 @@ async function reconcilePreparedTranscriptIndexesPass(
         const clean = await runExclusiveSqliteSessionWrite(
           databaseOptions,
           async () => {
+            databaseOptions.assertCurrent?.();
             try {
               const pending = withOpenClawAgentDatabaseReadOnly(
                 ({ db }) =>
@@ -275,6 +268,7 @@ async function reconcilePreparedTranscriptIndexesPass(
           },
           "sessions.transcript-index.preflight",
         );
+        databaseOptions.assertCurrent?.();
         if (clean) {
           return { reconciledSessions: 0, yielded: false };
         }
@@ -433,7 +427,7 @@ async function reconcilePreparedTranscriptIndexesPass(
               active,
               message.type === "active-chunk"
                 ? { activeRows: message.rows }
-                : { ftsRows: decodeFtsChunk(message.chunk) },
+                : { ftsChunk: message.chunk },
               memorySource,
               publication,
             );
@@ -531,7 +525,7 @@ function startPreparedSessionTranscriptIndexReconcile(params: PreparedReconcileP
   };
   // Capture before the first yield: disposal must revoke this scheduled owner,
   // including a later pass, before preflight can reopen its sentinel.
-  const memorySource = incognito ? undefined : captureMemorySource(params);
+  const memorySource = incognito ? undefined : captureMemoryTranscriptProjectionSource(params);
   const execution =
     !incognito && supportsOpenClawAgentDatabaseExecution(params)
       ? captureOpenClawAgentDatabaseExecution(params)
@@ -609,7 +603,7 @@ function startPreparedSessionTranscriptIndexReconcile(params: PreparedReconcileP
       executionCurrent &&
       state.signal &&
       !state.signal.aborted &&
-      (!memorySource || captureMemorySource(params))
+      (!memorySource || captureMemoryTranscriptProjectionSource(params))
     ) {
       startPreparedSessionTranscriptIndexReconcile({
         ...params,

@@ -10,13 +10,16 @@ import type { OpenClawAgentDatabase } from "../state/openclaw-agent-db-contract.
 import { readOpenClawAgentDatabaseIdentity } from "../state/openclaw-agent-db-identity.js";
 import type { DB } from "../state/openclaw-agent-db.generated.js";
 import { TRAJECTORY_RUNTIME_CAPTURE_MAX_BYTES } from "./paths.js";
+import type {
+  TrajectoryRuntimeRetentionInput,
+  TrajectoryRuntimeRetentionPlan,
+} from "./runtime-retention.contract.js";
 
 const RETENTION_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1_000;
 const GLOBAL_MAX_BYTES = 512 * 1024 * 1024;
 const SWEEP_INTERVAL_MS = 60 * 60 * 1_000;
 const DELETE_RUN_BATCH_SIZE = 100;
 type RetentionDatabase = Pick<DB, "trajectory_runtime_events">;
-export type TrajectoryRuntimeRetentionInput = { sessionId: string; maxGlobalRuntimeBytes?: number };
 export type TrajectoryRuntimeRetentionRevision = {
   incarnation: string;
   dataVersion: number;
@@ -28,11 +31,6 @@ type Run = {
   newest: number;
   bytes: number;
   order: number;
-};
-export type TrajectoryRuntimeRetentionPlan = {
-  complete: boolean;
-  sessionId: string;
-  runs: Pick<Run, "sessionId" | "runId">[];
 };
 type RetentionState = { sweptAt?: number; pending?: Promise<void> };
 // The native owner's lifetime bounds both cadence and any coalesced maintenance.

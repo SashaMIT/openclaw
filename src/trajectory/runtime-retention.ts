@@ -18,10 +18,10 @@ import { runOpenClawAgentWorkerWrite } from "../state/openclaw-agent-write-admis
 import { registerOpenClawStateDatabaseAsyncResource } from "../state/openclaw-state-db-cache.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
 import { captureOpenClawStateReadContext } from "../state/openclaw-state-worker-context.js";
+import type { TrajectoryRuntimeRetentionInput } from "./runtime-retention.contract.js";
 import {
   trajectoryRuntimeRetentionDue,
   trajectoryRuntimeRetentionState,
-  type TrajectoryRuntimeRetentionInput,
   type TrajectoryRuntimeRetentionRevision,
 } from "./runtime-retention.sqlite.js";
 
