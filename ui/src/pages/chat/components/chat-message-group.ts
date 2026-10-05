@@ -3,7 +3,6 @@ import { repeat } from "lit/directives/repeat.js";
 import { groupToolCalls, type ToolCallGroup } from "../../../../../src/chat/tool-call-grouping.js";
 import { icons } from "../../../components/icons.ts";
 import { personActivityLink, renderPersonName } from "../../../components/person-activity-link.ts";
-import { t } from "../../../i18n/index.ts";
 import type { MessageGroup, ToolCard } from "../../../lib/chat/chat-types.ts";
 import { messageClientSourcesLabel } from "../../../lib/chat/message-client-source.ts";
 import { normalizeRoleForGrouping } from "../../../lib/chat/message-normalizer.ts";
@@ -66,7 +65,7 @@ import {
   renderToolCard,
   syncToolDisclosureOverflow,
 } from "./chat-tool-cards.ts";
-import { renderToolOutcomeSummary } from "./chat-tool-outcome-summary.ts";
+import { renderToolOutcomeSummary, renderToolReviewOutcome } from "./chat-tool-outcome-summary.ts";
 import { renderTurnRecapRow } from "./chat-working-indicator.ts";
 
 type GroupedMessageRenderOptions = Parameters<typeof renderGroupedMessage>[2];
@@ -282,10 +281,6 @@ export function renderActivityGroup(
       </div>
     `);
   }
-  const reviewer = approvalReviews[0]?.label ?? "Review";
-  const reviewAriaLabel = reviewOutcome
-    ? t(`chat.toolCards.review.${reviewOutcome}`, { reviewer })
-    : "";
   const content = html`
     <div
       class="chat-activity-group ${activityExpanded ? "is-open" : ""}"
@@ -317,23 +312,7 @@ export function renderActivityGroup(
                 )
             : nothing
         }
-        ${
-          reviewOutcome
-            ? html`<span
-                class="chat-activity-group__review-status"
-                data-outcome=${reviewOutcome}
-                role="img"
-                aria-label=${reviewAriaLabel}
-                >${
-                  reviewOutcome === "denied"
-                    ? icons.shieldX
-                    : reviewOutcome === "reviewing"
-                      ? icons.shieldQuestion
-                      : icons.shieldCheck
-                }</span
-              >`
-            : nothing
-        }
+        ${renderToolReviewOutcome(reviewOutcome, approvalReviews[0]?.label)}
         ${
           activityExpanded
             ? nothing
