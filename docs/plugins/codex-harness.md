@@ -379,8 +379,11 @@ sandbox backend, and workspace-access policy.
 
 When deferred tools or native delegation are available, normal threads receive
 guidance to call listed tools directly and use `tool_search` for unlisted tools.
-They are told not to use `exec` for tool discovery or repeat a completed call.
-Only code-mode-only threads receive the `exec` / `ALL_TOOLS` discovery guidance.
+They keep an `exec` / `ALL_TOOLS` fallback for the case where `tool_search` is
+not directly callable (for example a model whose metadata selects code-mode-only
+execution), but are told never to use `exec` to look up a listed tool or to
+repeat a completed call. Configured code-mode-only threads receive the original
+`exec` / `ALL_TOOLS` discovery guidance.
 
 Sandbox turns also use these tools when Codex allows only managed hooks and cannot
 install the native process-admission hook. OpenClaw selects this existing execution

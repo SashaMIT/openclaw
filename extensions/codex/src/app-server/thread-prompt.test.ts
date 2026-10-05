@@ -173,9 +173,9 @@ describe("buildDeveloperInstructions deferred tool discovery", () => {
     });
 
     expect(instructions).toContain(
-      "Deferred tools may be absent from the direct tool list. Call a tool that is in the direct tool list directly. Use `tool_search` to find a tool that is not listed. Do not use `exec` to look tools up, and do not re-run a completed call to get a result you already have.",
+      "Deferred tools may be absent from the direct tool list. Call a tool that is in the direct tool list directly. Use `tool_search` to find a tool that is not listed; if `tool_search` is not directly callable, use `exec` to filter `ALL_TOOLS` by name and description and call the matching entry through `tools`. Never use `exec` to look up a tool that is already listed, and do not re-run a completed call to get a result you already have.",
     );
-    expect(instructions).not.toContain("ALL_TOOLS");
+    expect(instructions).not.toContain("On code-mode-only models");
     expect(instructions).not.toContain("use `exec` instead");
   });
 

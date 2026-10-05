@@ -614,9 +614,9 @@ describe("Codex app-server native code mode config", () => {
     expect(instructions).toContain("Use Codex native `spawn_agent` for Codex subagents");
     expect(instructions).toContain("Use `tool_search` to find a tool that is not listed");
     expect(instructions).toContain(
-      "Do not use `exec` to look tools up, and do not re-run a completed call to get a result you already have.",
+      "Never use `exec` to look up a tool that is already listed, and do not re-run a completed call to get a result you already have.",
     );
-    expect(instructions).not.toContain("ALL_TOOLS");
+    expect(instructions).not.toContain("On code-mode-only models");
     expect(instructions).toContain(
       "Use OpenClaw `sessions_spawn` only for OpenClaw or ACP delegation, never as a substitute for `spawn_agent` on internal legwork.",
     );
@@ -748,7 +748,7 @@ describe("Codex app-server native code mode config", () => {
         });
         expect(request.config?.["code_mode.direct_only_tool_namespaces"]).toBeUndefined();
         expect(request.config?.["features.code_mode_only"]).toBe(nativeCodeModeOnlyEnabled);
-        expect(request.developerInstructions?.includes("ALL_TOOLS")).toBe(
+        expect(request.developerInstructions?.includes("On code-mode-only models")).toBe(
           nativeCodeModeOnlyEnabled,
         );
       }
