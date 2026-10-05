@@ -830,6 +830,7 @@ src/infra/format-time/format-duration-exact.ts
 src/infra/format-time/format-duration-internal.ts
 src/infra/fs-safe-copy.worker.ts
 src/infra/fs-safe-env.ts
+src/infra/fs-safe-file-copy.ts
 src/infra/fs-safe-remove.ts
 src/infra/fs-safe.ts
 src/infra/gateway-lock-process.ts
@@ -1105,11 +1106,13 @@ src/infra/worker-native-handle.ts
 src/infra/worker-native-lifecycle.ts
 src/infra/worker-native-port.ts
 src/infra/worker-native-resource.ts
+src/infra/worker-native-task-port.ts
 src/infra/worker-task-capacity.ts
 src/infra/worker-task-host.ts
 src/infra/worker-task-pool-registry.ts
 src/infra/worker-task-pool.ts
 src/infra/worker-task-server.ts
+src/infra/worker-task-transport.ts
 src/infra/worker-transfer-bytes.ts
 src/infra/wsl.ts
 src/infra/zstd-codec.ts
