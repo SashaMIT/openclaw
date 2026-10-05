@@ -139,6 +139,7 @@ packages/worker-runtime/src/lifecycle.ts
 packages/worker-runtime/src/retained-operation.ts
 packages/worker-runtime/src/worker-task-capacity.ts
 packages/worker-runtime/src/worker-task-native-sections.ts
+packages/worker-runtime/src/worker-task-pool-bootstrap.ts
 packages/worker-runtime/src/worker-task-pool-completion.ts
 packages/worker-runtime/src/worker-task-pool-core.ts
 packages/worker-runtime/src/worker-task-pool-owned.ts
@@ -592,12 +593,16 @@ src/acp/runtime/session-control-owner.ts
 src/acp/runtime/session-meta-entry.kernel.ts
 src/acp/runtime/session-meta-keys.ts
 src/acp/runtime/session-meta-readonly.ts
+src/acp/runtime/session-meta-read.types.ts
 src/config/sessions/session-incognito-actor.ts
+src/config/sessions/session-collaboration-scope.ts
 src/config/sessions/session-incognito-compute-contract.ts
 src/config/sessions/session-incognito-compute.ts
+src/config/sessions/session-incognito-facts.types.ts
 src/config/sessions/session-incognito-lifecycle-contract.ts
 src/config/sessions/session-incognito-lifecycle.ts
 src/config/sessions/session-incognito-manager-contract.ts
+src/config/sessions/session-incognito-pending-input-contract.ts
 src/config/sessions/cli-session-binding.ts
 src/config/sessions/session-incognito-side-data-contract.ts
 src/config/sessions/session-incognito-transcript-contract.ts
@@ -605,7 +610,9 @@ src/state/incognito-session-error.ts
 src/config/sessions/session-model-context-projection.ts
 src/config/sessions/session-mutation-conflict-error.ts
 src/config/sessions/session-pending-input-custody-error.ts
+src/config/sessions/session-pending-input-operations.types.ts
 src/config/sessions/session-transcript-writer-claim-error.ts
+src/config/sessions/session-source-authority.ts
 src/config/sessions/session-sqlite-target-paths.ts
 src/config/sessions/session-sqlite-target.ts
 src/config/sessions/session-store-config.ts
@@ -1722,6 +1729,9 @@ src/state/session-watch-cursor-provenance.ts
 src/state/worker-operation-registry.ts
 src/system-agent/agent-id.ts
 src/test-utils/bun-process.ts
+src/trajectory/paths.ts
+src/trajectory/runtime-retention.sqlite.ts
+src/trajectory/runtime-retention.worker.ts
 src/utils.ts
 src/utils/absolute-deadline.ts
 src/utils/boolean.ts
