@@ -377,6 +377,11 @@ through `sandbox_exec`. Denying `process` removes `sandbox_process` and backgrou
 continuation, while `sandbox_exec` runs to completion under the existing timeout,
 sandbox backend, and workspace-access policy.
 
+When deferred tools or native delegation are available, normal threads receive
+guidance to call listed tools directly and use `tool_search` for unlisted tools.
+They are told not to use `exec` for tool discovery or repeat a completed call.
+Only code-mode-only threads receive the `exec` / `ALL_TOOLS` discovery guidance.
+
 Sandbox turns also use these tools when Codex allows only managed hooks and cannot
 install the native process-admission hook. OpenClaw selects this existing execution
 path before preparing the tool catalog and prompt. Existing policies that require
