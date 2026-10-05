@@ -625,6 +625,7 @@ describe("subagent parent recovery — durable yielded continuation", () => {
         );
       }
       const activated = loadSubagentRegistryFromSqlite();
+      expect(activated.has(stale.runId)).toBe(false);
       for (const entry of [child, sibling]) {
         if (requesterYielded) {
           expect(activated.get(entry.runId)?.requesterSettleWake).toMatchObject({
