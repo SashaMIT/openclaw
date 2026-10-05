@@ -65,7 +65,6 @@ import type { SessionTranscriptWatermark } from "./session-accessor.sqlite-trans
 import type {
   SessionAccessScope,
   SessionEntryReadScope,
-  SessionEntryListScope,
   SessionEntrySummary,
   SessionTranscriptReadScope,
 } from "./session-accessor.types.js";
@@ -77,6 +76,8 @@ import type {
 } from "./session-entry-current.types.js";
 import type { CapturedSessionEntryReadSource } from "./session-entry-read-source.types.js";
 import type {
+  SessionEntryListWorkerInput,
+  SessionEntryListWorkerResult,
   SessionEntryReadWorkerInput,
   SessionEntryReadWorkerResult,
   SessionRuntimeTargetWorkerInput,
@@ -292,13 +293,6 @@ export type SessionDiagnosticTextWorkerInput = {
   admission?: UserTurnTranscriptAdmissionReceipt;
 };
 
-export type SessionEntryListWorkerInput = {
-  kind: "session-entry-list";
-  database: { agentId: string; path: string };
-  scope: SessionEntryListScope & { cleanupSession?: string };
-  continuation?: CanonicalSessionReaderContinuation;
-};
-
 type SessionStoreSummaryWorkerInput = {
   kind: "session-store-summary";
   database: { agentId: string; path: string };
@@ -326,6 +320,7 @@ export type SessionExactEntriesWorkerSelection =
     };
 
 type SessionExactEntriesWorkerRequest = SessionExactEntriesWorkerSelection & {
+  expectedIdentity?: SessionEntryListWorkerInput["expectedIdentity"];
   /** Omitted retains the complete entry; an empty selection reads metadata only. */
   snapshotFields?: readonly SessionEntrySnapshotField[];
   env: NodeJS.ProcessEnv;
@@ -343,6 +338,7 @@ type SessionExactEntriesWorkerRequest = SessionExactEntriesWorkerSelection & {
 
 export type SessionExactEntriesWorkerResult = {
   kind: "session-exact-entries";
+  source?: SessionEntryListWorkerResult["source"];
   entries: SessionEntrySummary[];
   lifecycleTimestamps: SessionLifecycleTimestamps;
   pendingArchives?: boolean;
@@ -555,7 +551,7 @@ export type SessionTranscriptWorkerValues = SessionTranscriptInventoryWorkerValu
     kind: "session-pending-input-receipts";
     receipts: ReturnType<typeof listSessionPendingInputReceipts>;
   };
-  "session-entry-list": { kind: "session-entry-list"; entries: SessionEntrySummary[] };
+  "session-entry-list": SessionEntryListWorkerResult;
   "session-store-projection": SessionStoreProjectionWorkerResult;
   "session-store-summary": {
     kind: "session-store-summary";
@@ -708,6 +704,7 @@ export type SessionHistoryWorkerDatabase = SessionTranscriptInventoryReaders & {
   readEntries: (
     scope: SessionEntryListWorkerInput["scope"],
     continuation?: CanonicalSessionReaderContinuation,
+    expectedIdentity?: SessionEntryListWorkerInput["expectedIdentity"],
   ) => Promise<SessionEntrySummary[]>;
   readStoreSummary: SessionHistoryReader<
     SessionStoreSummaryWorkerInput,

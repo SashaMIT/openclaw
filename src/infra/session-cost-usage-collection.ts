@@ -23,7 +23,6 @@ import type { SessionTranscriptStats } from "../config/sessions/session-accessor
 import { listSessionTranscriptInstances } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { listSessionTranscriptArchivesReadOnly } from "../config/sessions/session-accessor.sqlite-history.js";
 import {
-  loadTranscriptEventsSync,
   readTranscriptStatsBatchReadOnlySync,
   readTranscriptStatsSync,
 } from "../config/sessions/session-accessor.sqlite-read.js";
@@ -34,6 +33,7 @@ import {
   resolveSqliteTargetFromSessionStorePath,
 } from "../config/sessions/session-sqlite-target.js";
 import { resolveSessionStorePathForScope } from "../config/sessions/session-store-path.js";
+import { loadTranscriptEvents } from "../config/sessions/session-transcript-events.js";
 import { streamSessionTranscriptLines } from "../config/sessions/transcript-stream.js";
 import { selectVisibleTranscriptEvents } from "../config/sessions/transcript-visible-events.js";
 import type { SessionEntry } from "../config/sessions/types.js";
@@ -376,10 +376,7 @@ export async function* readTranscriptRecords(
 ): AsyncGenerator<Record<string, unknown>> {
   const marker = parseSqliteSessionFileMarker(filePath);
   if (marker) {
-    const { restoreSessionColdTranscript } =
-      await import("../config/sessions/session-cold-storage.js");
-    await restoreSessionColdTranscript(marker);
-    for (const event of selectVisibleTranscriptEvents(loadTranscriptEventsSync(marker))) {
+    for (const event of selectVisibleTranscriptEvents(await loadTranscriptEvents(marker))) {
       if (isRecord(event)) {
         yield event;
       }
