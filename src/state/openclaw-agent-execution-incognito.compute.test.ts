@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement } from "../../test/helpers/promise.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
@@ -40,42 +40,19 @@ import { closeOpenClawStateDatabaseAsync } from "./openclaw-state-db.js";
 const tempDirs = useAutoCleanupTempDirTracker(afterAll);
 const authority: IncognitoSessionAuthority = { assertCurrent() {} };
 let actor: IncognitoAgentDatabaseExecution;
-let otherActor: IncognitoAgentDatabaseExecution;
-let otherWorker: Worker;
 let env: NodeJS.ProcessEnv;
 let sql: ReturnType<typeof observeHostDataSql>;
 
 beforeAll(async () => {
   env = { OPENCLAW_STATE_DIR: tempDirs.make("incognito-compute-") };
-  const posted = vi.spyOn(Worker.prototype, "postMessage");
-  try {
-    const opened = await captureOpenClawAgentDatabaseExecution({
-      kind: "ephemeral",
-      agentId: "main",
-      env,
-      authority,
-    });
-    const other = await captureOpenClawAgentDatabaseExecution({
-      kind: "ephemeral",
-      agentId: "other",
-      env,
-      authority,
-    });
-    assert(opened && other);
-    actor = opened;
-    otherActor = other;
-    const index = posted.mock.calls.findIndex(
-      ([request]) =>
-        isRecord(request) &&
-        request.type === "open" &&
-        request.databasePath === location(otherActor).path,
-    );
-    const worker: unknown = posted.mock.contexts[index];
-    assert(worker instanceof Worker);
-    otherWorker = worker;
-  } finally {
-    posted.mockRestore();
-  }
+  const opened = await captureOpenClawAgentDatabaseExecution({
+    kind: "ephemeral",
+    agentId: "main",
+    env,
+    authority,
+  });
+  assert(opened);
+  actor = opened;
 });
 beforeEach(() => {
   sql = observeHostDataSql();
@@ -88,12 +65,12 @@ afterEach(() => {
   }
 });
 afterAll(async () => {
-  await Promise.all([actor?.close(), otherActor?.close()]);
+  await actor?.close();
   await closeOpenClawStateDatabaseAsync();
 });
 
 function location(owner = actor) {
-  const agentId = owner === otherActor ? "other" : "main";
+  const agentId = owner.agentId;
   return { agentId, path: resolveIncognitoOpenClawAgentSqlitePath({ agentId, env }) };
 }
 
@@ -290,6 +267,103 @@ it("composes empty and multi-session store compute without holding its actor FIF
   });
 });
 
+describe("cross-actor compute", () => {
+  let otherActor: IncognitoAgentDatabaseExecution;
+  let otherWorker: Worker;
+
+  beforeAll(async () => {
+    const posted = vi.spyOn(Worker.prototype, "postMessage");
+    try {
+      const opened = await captureOpenClawAgentDatabaseExecution({
+        kind: "ephemeral",
+        agentId: "other",
+        env,
+        authority,
+      });
+      assert(opened);
+      otherActor = opened;
+      const index = posted.mock.calls.findIndex(
+        ([request]) =>
+          isRecord(request) &&
+          request.type === "open" &&
+          request.databasePath === location(otherActor).path,
+      );
+      const worker: unknown = posted.mock.contexts[index];
+      assert(worker instanceof Worker);
+      otherWorker = worker;
+    } finally {
+      posted.mockRestore();
+    }
+  });
+  afterAll(async () => {
+    await otherActor?.close();
+  });
+
+  it("isolates equal session IDs and refuses foreign actor bindings and forged usage markers", async () => {
+    const own = await create("shared-id");
+    const foreign = await create("shared-id", otherActor);
+    await append(own, "own usage");
+    await append(foreign, "foreign usage", otherActor);
+    await append(foreign, "another foreign event", otherActor);
+    const ownStats = await stats(own);
+    const foreignStats = await stats(foreign, otherActor);
+    assert(ownStats && foreignStats);
+    expect(foreignStats.eventCount).toBe(ownStats.eventCount + 1);
+    for (const [target, owner] of [
+      [own, actor],
+      [foreign, otherActor],
+    ] as const) {
+      await expect(usage(target, { kind: "inventory" }, owner)).resolves.toMatchObject({
+        kind: "inventory",
+        files: [{ sourcePath: marker(target, owner), sessionId: "shared-id" }],
+      });
+    }
+    await expect(
+      runUsageCostWorker(
+        prepare(),
+        { kind: "inventory" },
+        { actor: otherActor, authority, target: foreign },
+      ),
+    ).rejects.toThrow("Usage actor does not own the prepared database");
+    await expect(
+      usage(own, { kind: "inventory", sessionFiles: [marker(foreign, otherActor)] }),
+    ).rejects.toThrow("Usage request contains another incognito session");
+    await expect(
+      actor.sessions.withCompute(authority, own, (compute) =>
+        compute.execute({
+          type: "session.compute.usage.cache",
+          input: { ...own, request: { filePaths: [marker(foreign, otherActor)] } },
+        }),
+      ),
+    ).rejects.toThrow("another transcript");
+  });
+
+  it("ends queued compute with the typed error when its actor is lost", async () => {
+    const target = await create("actor-loss", otherActor);
+    const barrier = await hold(otherActor);
+    const outcome = Promise.resolve()
+      .then(() =>
+        otherActor.sessions.withCompute(authority, target, (compute) =>
+          compute.execute({
+            type: "session.compute.usage.stats",
+            input: { ...target, request: {} },
+          }),
+        ),
+      )
+      .then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      );
+    try {
+      await otherWorker.terminate();
+    } finally {
+      barrier.release.resolve();
+      await Promise.allSettled([barrier.held]);
+    }
+    expect(await outcome).toMatchObject({ error: { code: "INCOGNITO_SESSION_ENDED" } });
+  });
+});
+
 it("composes actor usage reports while retaining the durable cache owner", async () => {
   const target = await create("usage-facades");
   await append(target, "old branch");
@@ -471,45 +545,6 @@ it("preserves explicit empty inventory and applies the cutoff only to discovery"
   await expect(
     usage(target, { kind: "inventory", sessionFiles: [marker(target)], minMtimeMs }),
   ).resolves.toEqual(all);
-});
-
-it("isolates equal session IDs and refuses foreign actor bindings and forged usage markers", async () => {
-  const own = await create("shared-id");
-  const foreign = await create("shared-id", otherActor);
-  await append(own, "own usage");
-  await append(foreign, "foreign usage", otherActor);
-  await append(foreign, "another foreign event", otherActor);
-  const ownStats = await stats(own);
-  const foreignStats = await stats(foreign, otherActor);
-  assert(ownStats && foreignStats);
-  expect(foreignStats.eventCount).toBe(ownStats.eventCount + 1);
-  for (const [target, owner] of [
-    [own, actor],
-    [foreign, otherActor],
-  ] as const) {
-    await expect(usage(target, { kind: "inventory" }, owner)).resolves.toMatchObject({
-      kind: "inventory",
-      files: [{ sourcePath: marker(target, owner), sessionId: "shared-id" }],
-    });
-  }
-  await expect(
-    runUsageCostWorker(
-      prepare(),
-      { kind: "inventory" },
-      { actor: otherActor, authority, target: foreign },
-    ),
-  ).rejects.toThrow("Usage actor does not own the prepared database");
-  await expect(
-    usage(own, { kind: "inventory", sessionFiles: [marker(foreign, otherActor)] }),
-  ).rejects.toThrow("Usage request contains another incognito session");
-  await expect(
-    actor.sessions.withCompute(authority, own, (compute) =>
-      compute.execute({
-        type: "session.compute.usage.cache",
-        input: { ...own, request: { filePaths: [marker(foreign, otherActor)] } },
-      }),
-    ),
-  ).rejects.toThrow("another transcript");
 });
 
 it.each(["transaction", "commit"] as const)(
@@ -893,25 +928,3 @@ it.each(["coalesce", "handoff"] as const)(
     }
   },
 );
-
-it("ends queued compute with the typed error when its actor is lost", async () => {
-  const target = await create("actor-loss", otherActor);
-  const barrier = await hold(otherActor);
-  const outcome = Promise.resolve()
-    .then(() =>
-      otherActor.sessions.withCompute(authority, target, (compute) =>
-        compute.execute({ type: "session.compute.usage.stats", input: { ...target, request: {} } }),
-      ),
-    )
-    .then(
-      (value) => ({ value }),
-      (error: unknown) => ({ error }),
-    );
-  try {
-    await otherWorker.terminate();
-  } finally {
-    barrier.release.resolve();
-    await Promise.allSettled([barrier.held]);
-  }
-  expect(await outcome).toMatchObject({ error: { code: "INCOGNITO_SESSION_ENDED" } });
-});
