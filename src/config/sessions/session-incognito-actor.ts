@@ -31,11 +31,13 @@ import {
   type IncognitoHistoryOperations,
 } from "./session-incognito-history-contract.js";
 import {
+  captureIncognitoLifecycleSettlement,
   incognitoLifecycleKeys,
   isIncognitoLifecycleCommand,
   isIncognitoLifecycleWrite,
   type IncognitoLifecycleEntry,
   type IncognitoLifecycleOperations,
+  type IncognitoLifecycleSettlement as LifecycleSettlement,
 } from "./session-incognito-lifecycle-contract.js";
 import type { IncognitoOutboxOperations } from "./session-incognito-outbox-contract.js";
 import {
@@ -58,10 +60,6 @@ import type {
 } from "./session-pending-input-operations.types.js";
 
 type Scope = Pick<SqliteWorkerStore<AgentDatabaseIncognitoOperations>, "execute">;
-type LifecycleSettlement = {
-  beforeCommit(): void;
-  settle(outcome: "committed" | "rolled-back" | "unknown"): void;
-};
 export type IncognitoSessionRunner = <T>(
   authority: IncognitoSessionAuthority,
   operation: (scope: Scope) => Promise<T>,
@@ -671,25 +669,13 @@ export function createIncognitoSessionFacts(
           assertBorrowed();
           authority.assertCurrent();
           const captured = structuredClone(command);
-          const input = captured.input;
-          const removedEntries =
-            "target" in input
-              ? [input.target]
-              : "plan" in input
-                ? input.plan.entries.flatMap(({ sessionKey, expectedEntry }) =>
-                    expectedEntry ? [{ sessionKey, entry: expectedEntry }] : [],
-                  )
-                : undefined;
-          if (removedEntries && !captureLifecycle) {
-            throw new Error("Incognito deletion requires its prepared lifecycle owner");
-          }
           return perform(
             authority,
             captured,
             isIncognitoLifecycleWrite(command.type),
             (result) => result.value,
             signal,
-            removedEntries ? captureLifecycle?.(removedEntries) : undefined,
+            captureIncognitoLifecycleSettlement(captured.input, captureLifecycle),
           );
         },
         captureCurrent(sessionKey: string) {
