@@ -23,6 +23,7 @@ export function readSessionListSelectionFacts(
     agentId: parsed ? normalizeAgentId(parsed.agentId) : undefined,
     isCronRun: isCronRunSessionKey(key),
     isCron: isCronSessionDisplayKey(key),
+    isDock: entry?.createdVia === "plugin-dock",
     isSystem: isSystemCreatedSessionRow({
       key,
       createdActor: entry?.createdActor,

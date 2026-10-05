@@ -169,39 +169,42 @@ describe("SQLite session row persistence", () => {
     },
   );
 
-  it("protects required profile provenance during replacement", async () => {
-    const scope = createScope("stamp");
-    const stamp = {
-      createdVia: "operator" as const,
-      createdActor: { type: "human" as const, source: "profile" as const, id: "profile-creator" },
-      createdAt: 10,
-      sandbox: "required" as const,
-    };
-    await upsertSessionEntryCore(scope, { sessionId: "original", updatedAt: 10, ...stamp });
-    const replacement: InternalSessionEntry = {
-      sessionId: "replacement",
-      updatedAt: 20,
-      createdVia: "plugin",
-      createdActor: { type: "agent", id: "replacement-agent" },
-      createdAt: 20,
-    };
-    expect(
-      await patchSessionEntryCore(scope, () => replacement, { replaceEntry: true }),
-    ).toMatchObject(stamp);
-    expect(loadSessionEntry(scope)).toMatchObject({ sessionId: "replacement", ...stamp });
-    const row = openOpenClawAgentDatabase(scope)
-      .db.prepare(
-        "SELECT created_actor_type, created_actor_id, created_via, created_at, entry_json FROM session_nodes WHERE session_key = ?",
-      )
-      .get(scope.sessionKey);
-    expect(row).toMatchObject({
-      created_actor_type: "human",
-      created_actor_id: "profile-creator",
-      created_via: "operator",
-      created_at: 10,
-    });
-    expect(JSON.parse(String(row?.entry_json))).toMatchObject(stamp);
-  });
+  it.each(["operator", "plugin-dock"] as const)(
+    "protects required profile provenance for %s during replacement",
+    async (createdVia) => {
+      const scope = createScope("stamp");
+      const stamp = {
+        createdVia,
+        createdActor: { type: "human" as const, source: "profile" as const, id: "profile-creator" },
+        createdAt: 10,
+        sandbox: "required" as const,
+      };
+      await upsertSessionEntryCore(scope, { sessionId: "original", updatedAt: 10, ...stamp });
+      const replacement: InternalSessionEntry = {
+        sessionId: "replacement",
+        updatedAt: 20,
+        createdVia: "plugin",
+        createdActor: { type: "agent", id: "replacement-agent" },
+        createdAt: 20,
+      };
+      expect(
+        await patchSessionEntryCore(scope, () => replacement, { replaceEntry: true }),
+      ).toMatchObject(stamp);
+      expect(loadSessionEntry(scope)).toMatchObject({ sessionId: "replacement", ...stamp });
+      const row = openOpenClawAgentDatabase(scope)
+        .db.prepare(
+          "SELECT created_actor_type, created_actor_id, created_via, created_at, entry_json FROM session_nodes WHERE session_key = ?",
+        )
+        .get(scope.sessionKey);
+      expect(row).toMatchObject({
+        created_actor_type: "human",
+        created_actor_id: "profile-creator",
+        created_via: createdVia,
+        created_at: 10,
+      });
+      expect(JSON.parse(String(row?.entry_json))).toMatchObject(stamp);
+    },
+  );
 
   it("keeps new required provenance with a fallback", async () => {
     const env = {

@@ -79,6 +79,11 @@ import {
 } from "./openclaw-agent-db.paths.js";
 import { migrateSessionParticipantsSchema } from "./openclaw-agent-participants-migration.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
+import {
+  SESSION_DOCK_CREATION_SCHEMA_VERSION,
+  migrateSessionDockCreationSchemaInTransaction,
+  withoutSessionDockCreationSchema,
+} from "./openclaw-agent-session-dock-schema.js";
 import { migrateSessionEntrySnapshotsInTransaction } from "./openclaw-agent-session-snapshots-migration.js";
 import {
   SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION,
@@ -348,16 +353,23 @@ function ensureAgentSchema(
         !isEmptyDatabase &&
         previousVersion < SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION &&
         targetVersion >= SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION;
-      const storageSchemaSql = requiresSnapshotMigration
-        ? withoutSessionEntrySnapshotsSchema(schemaSql)
+      const requiresDockMigration =
+        !isEmptyDatabase &&
+        previousVersion < SESSION_DOCK_CREATION_SCHEMA_VERSION &&
+        targetVersion >= SESSION_DOCK_CREATION_SCHEMA_VERSION;
+      const creationSchemaSql = requiresDockMigration
+        ? withoutSessionDockCreationSchema(schemaSql)
         : schemaSql;
+      const storageSchemaSql = requiresSnapshotMigration
+        ? withoutSessionEntrySnapshotsSchema(creationSchemaSql)
+        : creationSchemaSql;
       const migrationSchemaSql = requiresStorageMigration
         ? withLegacyAgentStorageSchema(storageSchemaSql, previousVersion)
         : storageSchemaSql;
       if (
         previousVersion < targetVersion &&
         previousVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION - 1 &&
-        previousVersion < SESSION_ENTRY_SNAPSHOTS_SCHEMA_VERSION &&
+        previousVersion < SESSION_DOCK_CREATION_SCHEMA_VERSION &&
         targetVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION
       ) {
         if (previousVersion >= CANONICAL_SESSION_VALIDATION_SCHEMA_VERSION) {
@@ -392,6 +404,9 @@ function ensureAgentSchema(
         }
         if (requiresSnapshotMigration) {
           migrateSessionEntrySnapshotsInTransaction(db);
+        }
+        if (requiresDockMigration) {
+          migrateSessionDockCreationSchemaInTransaction(db, schemaSql);
         }
         finishAgentSchemaMigration(
           db,
@@ -483,6 +498,9 @@ function ensureAgentSchema(
       }
       if (requiresSnapshotMigration) {
         migrateSessionEntrySnapshotsInTransaction(db);
+      }
+      if (requiresDockMigration) {
+        migrateSessionDockCreationSchemaInTransaction(db, schemaSql);
       }
       finishAgentSchemaMigration(
         db,

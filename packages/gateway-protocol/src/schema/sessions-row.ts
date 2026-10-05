@@ -144,6 +144,8 @@ export const SessionRowSchema = Type.Object(
     peerKind: Type.Optional(SessionPeerKindSchema),
     isMain: Type.Optional(Type.Boolean()),
     isBackground: Type.Optional(Type.Boolean()),
+    /** Conversation owned by a plugin dock rather than ordinary session discovery. */
+    isDock: Type.Optional(Type.Boolean()),
     chatType: Type.Optional(
       Type.Union([Type.Literal("direct"), Type.Literal("group"), Type.Literal("channel")]),
     ),
@@ -229,6 +231,7 @@ export const SessionRowSchema = Type.Object(
         Type.Literal("talk"),
         Type.Literal("run"),
         Type.Literal("plugin"),
+        Type.Literal("plugin-dock"),
         Type.Literal("internal"),
       ]),
     ),
