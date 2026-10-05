@@ -923,7 +923,7 @@ it("orders native reads with writers and ignores unrelated metadata notification
   });
 });
 
-it.each(["entry", "store", "topology"] as const)(
+it.each(["entry", "unpublished", "store", "topology"] as const)(
   "revokes an ordered reader after authoritative %s changes",
   async (change) => {
     await withOpenClawTestState({ scenario: "minimal" }, async ({ env }) => {
@@ -936,6 +936,11 @@ it.each(["entry", "store", "topology"] as const)(
           read!.assertCurrent();
           if (change === "entry") {
             writeSessionEntry(database, sessionKey, { sessionId: "successor", updatedAt: 2 });
+          } else if (change === "unpublished") {
+            // A legacy synchronous SDK write may precede its owner publication.
+            database.db
+              .prepare("UPDATE session_nodes SET updated_at = updated_at + 1 WHERE session_key = ?")
+              .run(sessionKey);
           } else if (change === "store") {
             sessionChanges.emit({
               all: true,

@@ -597,6 +597,7 @@ src/acp/runtime/session-meta-keys.ts
 src/acp/runtime/session-meta-readonly.ts
 src/acp/runtime/session-meta-read.types.ts
 src/config/sessions/session-incognito-actor.ts
+src/config/sessions/session-incognito-authority.ts
 src/config/sessions/session-collaboration-scope.ts
 src/config/sessions/session-incognito-compute-contract.ts
 src/config/sessions/session-incognito-compute.ts
@@ -607,6 +608,7 @@ src/config/sessions/session-incognito-manager-contract.ts
 src/config/sessions/session-incognito-pending-input-contract.ts
 src/config/sessions/cli-session-binding.ts
 src/config/sessions/session-incognito-side-data-contract.ts
+src/config/sessions/session-row-facts.types.ts
 src/config/sessions/session-incognito-transcript-contract.ts
 src/state/incognito-session-error.ts
 src/config/sessions/session-model-context-projection.ts
@@ -1815,3 +1817,5 @@ scripts/github/security-sensitive-guard.mjs
 scripts/lib/bounded-response.mjs
 scripts/pr-lib/merge-prior-ci-cancellation.mjs
 scripts/pr-lib/merge-prior-ci-security.mjs
+src/infra/exec-approval-action.types.ts
+src/skills/runtime/refresh-watch-targets.types.ts

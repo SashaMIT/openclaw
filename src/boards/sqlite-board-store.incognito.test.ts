@@ -50,6 +50,73 @@ async function fixture(name: string, source = authority) {
   return { target, store };
 }
 
+it("joins an accepted Board consumer and its dependent write before releasing the borrow", async () => {
+  const { target } = await fixture("consumer-lifetime");
+  const borrowed = await captureOpenClawAgentDatabaseExecution({
+    kind: "ephemeral",
+    agentId: actor.agentId,
+    env,
+    authority,
+    existingOnly: true,
+  });
+  assert(borrowed);
+  const store = new SqliteBoardStore({
+    env,
+    resolveSession: () => ({
+      ...target,
+      agentId: borrowed.agentId,
+      path: borrowed.path,
+      incognito: { actor: borrowed, authority },
+    }),
+  });
+  const entered = createDeferredCore();
+  const resume = createDeferredCore();
+  const published = createDeferredCore();
+  const stop = sessionChanges.subscribe((change) => {
+    if (!("all" in change) && change.sessionKey === target.sessionKey) {
+      published.resolve();
+    }
+  });
+  const pending = store.useSnapshot(target, async () => {
+    entered.resolve();
+    await resume.promise;
+    await store.putWidget({
+      ...target,
+      name: "retained",
+      content: { kind: "html", html: "<p>Accepted</p>" },
+    });
+  });
+  const rejected = expect(pending).rejects.toThrow("reference is released");
+  let releasing: Promise<void> | undefined;
+  try {
+    await awaitGateBeforeSettlement(entered.promise, pending, "Board consumer was not reached");
+    let released = false;
+    releasing = borrowed.release().then(() => {
+      released = true;
+    });
+    await Promise.resolve();
+    expect(released).toBe(false);
+    resume.resolve();
+    await awaitGateBeforeSettlement(
+      published.promise,
+      pending,
+      "Dependent Board write was abandoned",
+    );
+    await rejected;
+    await releasing;
+    expect(
+      await actor.sessions.sideData(authority, {
+        type: "session.boards.readSnapshot",
+        input: { sessionKey: target.sessionKey },
+      }),
+    ).toMatchObject({ snapshot: { widgets: [{ name: "retained" }] } });
+  } finally {
+    resume.resolve();
+    stop();
+    await Promise.allSettled([pending, releasing, borrowed.release()]);
+  }
+});
+
 it("composes Board writes, grants and reads on the actor with FIFO and zero caller SQL", async () => {
   const { target, store } = await fixture("board");
   const changes: SessionRowChange[] = [];

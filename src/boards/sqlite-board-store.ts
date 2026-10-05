@@ -208,7 +208,7 @@ export class SqliteBoardStore implements BoardStore {
         }
       };
       if (!prepare) {
-        return execute(currentAuthority);
+        return actor.sessions.withSharedState(() => execute(currentAuthority));
       }
       return actor.sessions.withSharedState(async () => {
         const source = await actor.sessions.read(currentAuthority, {
@@ -397,13 +397,19 @@ export class SqliteBoardStore implements BoardStore {
         },
         authorize: (stage, facts) => authority.authorize?.(stage, facts),
       };
-      try {
-        const value = await actorRead(actor, currentAuthority, captured.sessionKey);
-        currentAuthority.assertCurrent();
-        return await accept(value).value;
-      } catch (error) {
-        throw restoreBoardError(error);
-      }
+      return await actor.sessions.withSharedState(async () => {
+        // Retain the composition for dependent writes, outside the reader's FIFO grant.
+        const runInRetainedContext = AsyncLocalStorage.snapshot();
+        try {
+          const value = await actorRead(actor, currentAuthority, captured.sessionKey);
+          currentAuthority.assertCurrent();
+          const result = await runInRetainedContext(consume, value, captured.sessionKey);
+          currentAuthority.assertCurrent();
+          return result;
+        } catch (error) {
+          throw restoreBoardError(error);
+        }
+      });
     }
     if (isIncognitoOpenClawAgentSqlitePath(captured.path, captured)) {
       // The excluded process-held owner cannot be reopened by a durable worker.

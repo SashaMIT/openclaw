@@ -1,5 +1,7 @@
 // These consumers need the host-owned SQLite broker, which runs in forked processes.
 export const databaseWorkerCoreTestFiles = [
+  "src/gateway/progress-card-store.incognito.test.ts",
+  "src/gateway/session-incognito-lifetime.actor.test.ts",
   "src/model-catalog/remote-refresh.test.ts",
   "src/model-catalog/remote-store.test.ts",
   "src/agents/subagents/spawn/acp-parent-stream-store.sqlite.test.ts",

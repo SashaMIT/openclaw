@@ -14,14 +14,7 @@ import {
   readBudgetedDirEntries,
   toWatchRoot,
 } from "./refresh-watch-path.js";
-
-export type WatchTarget = {
-  path: string;
-  roots: string[];
-  authorityPath: string;
-  depth: number;
-  executionOnly?: true;
-};
+import type { SkillsWatchTargetCacheEntry, WatchTarget } from "./refresh-watch-targets.types.js";
 
 function skillsWatchTargetsMatch(previous: WatchTarget, next: WatchTarget): boolean {
   return (
@@ -54,11 +47,6 @@ export function compareSkillsWatchTargets(
     );
   return { targetsUnchanged, sharedTargetsChanged };
 }
-
-export type SkillsWatchTargetCacheEntry = {
-  signature: string;
-  targets: WatchTarget[];
-};
 
 const GROUPED_SKILLS_WATCH_DEPTH = 6;
 const CONFIGURED_ROOT_WATCH_DEPTH = 2;

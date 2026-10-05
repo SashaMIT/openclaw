@@ -164,6 +164,24 @@ async function hold(owner = actor) {
   return { release, held };
 }
 
+it("refuses new compute work through a released borrow", async () => {
+  const target = await create("released-borrow");
+  const reference = await captureOpenClawAgentDatabaseExecution({
+    kind: "ephemeral",
+    agentId: "main",
+    env,
+    authority,
+    existingOnly: true,
+  });
+  assert(reference);
+  await reference.release();
+  const operation = vi.fn(async () => "late compute");
+  await expect(
+    Promise.resolve().then(() => reference.sessions.withCompute(authority, target, operation)),
+  ).rejects.toThrow("Incognito execution reference is released");
+  expect(operation).not.toHaveBeenCalled();
+});
+
 it("observes a pending actor append before usage inventory, stats and rollup publication", async () => {
   const target = await create("fifo");
   const before = await stats(target);
