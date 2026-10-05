@@ -441,43 +441,23 @@ export function createIncognitoSessionFacts(
           target: IncognitoComputeTarget | undefined,
           operation: (scope: IncognitoComputeScope) => Promise<T>,
           signal?: AbortSignal,
-        ): Promise<T> => {
-          const held = target ? claim(target.sessionKey, assertBorrowed) : undefined;
-          const selected = new Map<string, IncognitoSessionClaim>();
-          return retain(
-            withIncognitoCompute({
+        ): Promise<T> =>
+          retain(
+            withIncognitoCompute<T, IncognitoSessionClaim>({
               target,
-              assertCurrent() {
-                authority.assertCurrent();
-                assertBorrowed();
-                held?.assertCurrent();
-                for (const source of selected.values()) {
-                  source.assertCurrent();
-                }
-              },
-              disclose() {
-                held?.authorize(authority, "commit");
-                for (const source of selected.values()) {
-                  source.authorize(authority, "commit");
-                }
-              },
+              assertAuthority: () => authority.assertCurrent(),
+              assertBorrowed,
+              captureClaim: (sessionKey, facts) => claim(sessionKey, assertBorrowed, facts),
+              authorize: (held) => held.authorize(authority, "commit"),
               operation,
-              execute: (command) =>
+              execute: (command, observeFacts) =>
                 perform(
                   authority,
                   command,
                   isIncognitoComputeWrite(command.type),
                   (result) => {
-                    if (!target) {
-                      for (const facts of result.facts) {
-                        if (!selected.has(facts.sessionKey)) {
-                          selected.set(
-                            facts.sessionKey,
-                            claim(facts.sessionKey, assertBorrowed, facts),
-                          );
-                        }
-                      }
-                    }
+                    // Capture claims before the next FIFO turn can publish new facts.
+                    observeFacts(result.facts);
                     return result.value;
                   },
                   signal,
@@ -493,8 +473,7 @@ export function createIncognitoSessionFacts(
                   true,
                 ),
             }),
-          );
-        },
+          ),
         read: (
           authority: IncognitoSessionAuthority,
           input: IncognitoSessionRead,
