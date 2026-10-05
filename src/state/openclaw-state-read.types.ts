@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Selectable } from "kysely";
 import type { AcpSessionReadInput, AcpSessionRow } from "../acp/runtime/session-meta-read.types.js";
+import type { AcpResumeSessionRow } from "../acp/runtime/session-meta-resume.kernel.js";
 import type { McpOAuthReadOnlyOperations } from "../agents/mcp-oauth-store.kernel.js";
 import type {
   SandboxBrowserRegistryEntry,
@@ -175,6 +176,13 @@ export type OpenClawStateReadCommand =
   | { type: "config.snapshot.read" }
   | { type: "claws.packageOwnership"; agentId?: string; includeInstalls: boolean }
   | { type: "doctor.gatewayOwnerLease.read" }
+  | {
+      type: "acpSessions.resume";
+      agentId: string;
+      backendId?: string;
+      resumeSessionId: string;
+      sessionKey?: string;
+    }
   | { type: "acpSessions.list" }
   | { type: "acpSessions.metadata"; entries: readonly AcpSessionReadInput[] }
   | SqliteWorkerCommand<McpOAuthReadOnlyOperations>
@@ -320,6 +328,10 @@ export type OpenClawStateReadResult =
   | {
       type: "config.snapshot.read";
       snapshot: ConfigSnapshotAuditRecord | null;
+    }
+  | {
+      type: "acpSessions.resume";
+      rows: AcpResumeSessionRow[];
     }
   | {
       type: "acpSessions.list";

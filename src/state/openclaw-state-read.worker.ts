@@ -4,6 +4,7 @@ import {
   selectAcpSessionRows,
   selectAcpSessionRowsByKeys,
 } from "../acp/runtime/session-meta-keys.js";
+import { selectAcpResumeSessions } from "../acp/runtime/session-meta-resume.kernel.js";
 import {
   loadSubagentMaintenanceRunsInDatabase,
   loadVersionedSubagentRunsInDatabase,
@@ -258,6 +259,9 @@ serveOwnedWorkerTasks(
                 type: command.type,
                 entries: readOutboundDeliveriesInDatabase({ db }, command),
               };
+            }
+            if (command.type === "acpSessions.resume") {
+              return { type: command.type, rows: selectAcpResumeSessions(db, command) };
             }
             if (command.type === "acpSessions.list") {
               return {
