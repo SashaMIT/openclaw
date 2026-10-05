@@ -188,8 +188,9 @@ describe("startup recovery admission", () => {
           });
           const admitted = targets.map(() => createDeferred());
           const unsubscribe = sessionChanges.subscribe((change) => {
-            if ("all" in change && change.scope?.topology) {
-              const index = targets.findIndex((target) => target.agentId === change.scope?.agentId);
+            const scope = change.scope;
+            if (typeof scope === "object" && scope.topology) {
+              const index = targets.findIndex((target) => target.agentId === scope.agentId);
               admitted[index]?.resolve();
             }
           });
